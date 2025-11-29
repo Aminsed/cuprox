@@ -2,49 +2,77 @@
 cuProx PyTorch Integration
 ==========================
 
-Differentiable optimization layers for PyTorch.
+Differentiable optimization layers for PyTorch that enable
+backpropagation through LP and QP solvers.
 
-This module provides GPU-accelerated LP/QP solvers that can be used as
-differentiable layers in neural networks, enabling end-to-end training
-through optimization problems.
+Quick Start
+-----------
+>>> from cuprox.torch import QPLayer, solve_qp
+>>>
+>>> # Using nn.Module layer
+>>> layer = QPLayer(n_vars=2)
+>>> x = layer(P, q)  # differentiable!
+>>>
+>>> # Using functional API
+>>> x = solve_qp(P, q)
+>>> x.sum().backward()
 
-Example:
-    >>> import torch
-    >>> from cuprox.torch import QPLayer
-    >>> 
-    >>> # Create a differentiable QP layer
-    >>> layer = QPLayer(n_vars=2)
-    >>> 
-    >>> # Problem parameters (can have gradients)
-    >>> P = torch.eye(2, requires_grad=True)
-    >>> q = torch.tensor([-1.0, -2.0], requires_grad=True)
-    >>> 
-    >>> # Solve and backpropagate
-    >>> x = layer(P, q)
-    >>> loss = x.sum()
-    >>> loss.backward()
-    >>> print(q.grad)  # Gradients w.r.t. problem parameters
+Classes
+-------
+QPLayer
+    nn.Module for differentiable quadratic programming.
+    Solves: min (1/2)x'Px + q'x s.t. Ax=b, Gx<=h, lb<=x<=ub
 
-See Also:
-    - :class:`QPLayer`: Differentiable quadratic programming layer
-    - :class:`LPLayer`: Differentiable linear programming layer
-    - :func:`solve_qp`: Functional interface for differentiable QP
-    - :func:`solve_lp`: Functional interface for differentiable LP
+LPLayer
+    nn.Module for differentiable linear programming.
+    Solves: min c'x s.t. Ax=b, Gx<=h, lb<=x<=ub
+
+Functions
+---------
+solve_qp
+    Functional interface to differentiable QP solver.
+
+solve_lp
+    Functional interface to differentiable LP solver.
+
+Example: OptNet-style Network
+-----------------------------
+>>> import torch.nn as nn
+>>> from cuprox.torch import QPLayer
+>>>
+>>> class OptNet(nn.Module):
+...     def __init__(self, n_features, n_hidden):
+...         super().__init__()
+...         self.fc = nn.Linear(n_features, n_hidden)
+...         self.qp = QPLayer(n_vars=n_hidden)
+...         self.P = nn.Parameter(torch.eye(n_hidden))
+...
+...     def forward(self, x):
+...         q = self.fc(x)
+...         return self.qp(self.P, q)
+>>>
+>>> model = OptNet(10, 5)
+>>> x = torch.randn(10)
+>>> y = model(x)
+>>> y.sum().backward()  # Gradients through QP!
+
+See Also
+--------
+- Amos & Kolter (2017): "OptNet: Differentiable Optimization..."
+- Agrawal et al. (2019): "Differentiable Convex Optimization Layers"
 """
 
-from .layers import QPLayer, LPLayer, OptLayer
+from .layers import QPLayer, LPLayer
 from .functions import solve_qp, solve_lp, QPFunction, LPFunction
 
 __all__ = [
-    # Layers (nn.Module)
+    # nn.Module layers
     "QPLayer",
-    "LPLayer", 
-    "OptLayer",
+    "LPLayer",
     # Functional interface
     "solve_qp",
     "solve_lp",
-    # Autograd functions (advanced)
+    # Advanced: autograd functions
     "QPFunction",
     "LPFunction",
 ]
-
