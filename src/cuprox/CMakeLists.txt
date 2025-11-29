@@ -18,11 +18,15 @@ if(CUPROX_HAS_CUDA)
         core/dense_vector.cuh
         core/sparse_matrix.cuh
         linalg/projections.cuh
+        preprocess/scaling.cuh
+        solvers/pdhg.cuh
     )
     
     set(CUPROX_CUDA_SOURCES
         core/dense_vector.cu
         linalg/projections.cu
+        preprocess/scaling.cu
+        solvers/pdhg.cu
     )
     
     add_library(cuprox_core STATIC

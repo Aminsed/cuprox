@@ -20,6 +20,7 @@ include(GoogleTest)
 # ============================================================================
 
 if(CUPROX_HAS_CUDA)
+    # Dense vector tests
     add_executable(test_dense_vector test_dense_vector.cpp)
     target_link_libraries(test_dense_vector PRIVATE
         cuprox::core
@@ -27,11 +28,19 @@ if(CUPROX_HAS_CUDA)
     )
     gtest_discover_tests(test_dense_vector)
     
+    # Sparse matrix tests
     add_executable(test_sparse_matrix test_sparse_matrix.cpp)
     target_link_libraries(test_sparse_matrix PRIVATE
         cuprox::core
         GTest::gtest_main
     )
     gtest_discover_tests(test_sparse_matrix)
+    
+    # PDHG solver tests
+    add_executable(test_pdhg test_pdhg.cpp)
+    target_link_libraries(test_pdhg PRIVATE
+        cuprox::core
+        GTest::gtest_main
+    )
+    gtest_discover_tests(test_pdhg)
 endif()
-
