@@ -86,6 +86,13 @@ __all__ = [
     "DeviceError",
 ]
 
+# PyTorch integration (optional - only if torch is installed)
+try:
+    from . import torch as torch_module
+    __all__.append("torch")
+except ImportError:
+    pass  # torch not available
+
 
 def info() -> str:
     """Return information about the cuProx installation."""
