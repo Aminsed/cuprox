@@ -170,6 +170,7 @@ class TestLinearMPC:
         assert sim["x"].shape == (51, 2)
 
 
+@pytest.mark.gpu
 class TestTrackingMPC:
     """Test TrackingMPC controller."""
 

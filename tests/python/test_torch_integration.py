@@ -28,6 +28,7 @@ def dtype():
     return torch.float64
 
 
+@pytest.mark.gpu
 class TestNeuralNetworkIntegration:
     """Integration with nn.Module."""
 

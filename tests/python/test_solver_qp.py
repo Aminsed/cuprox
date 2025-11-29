@@ -5,7 +5,7 @@ Tests for QP solver functionality.
 import numpy as np
 import pytest
 
-from cuprox import Status, solve
+from cuprox import SolveResult, Status, solve
 
 try:
     from scipy import sparse
@@ -15,8 +15,9 @@ except ImportError:
     HAS_SCIPY = False
 
 
+@pytest.mark.gpu
 class TestSolveQPSimple:
-    """Tests for simple QP problems."""
+    """Tests for simple QP problems (require GPU solver for accuracy)."""
 
     def test_solve_unconstrained_qp(self):
         """

@@ -29,6 +29,7 @@ def dtype():
     return torch.float64
 
 
+@pytest.mark.gpu
 class TestQPLayerForward:
     """Forward pass tests."""
 
@@ -144,6 +145,7 @@ class TestQPLayerForward:
         assert rel_error < 0.1
 
 
+@pytest.mark.gpu
 class TestQPLayerBackward:
     """Backward pass (gradient) tests."""
 
@@ -269,6 +271,7 @@ class TestQPInputValidation:
             QPLayer(n_vars=-1)
 
 
+@pytest.mark.gpu
 class TestQPFunctionalAPI:
     """Tests for solve_qp function."""
 

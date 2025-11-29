@@ -8,10 +8,12 @@ Tests covering:
 """
 
 import numpy as np
+import pytest
 
 
+@pytest.mark.gpu
 class TestNewsvendorProblem:
-    """Classic newsvendor problem tests."""
+    """Classic newsvendor problem tests (require GPU solver for accuracy)."""
 
     def test_newsvendor_setup(self):
         """Set up newsvendor problem."""
@@ -77,6 +79,7 @@ class TestNewsvendorProblem:
         assert 0 <= result.x[0] <= 100
 
 
+@pytest.mark.gpu
 class TestCapacityPlanning:
     """Capacity planning under demand uncertainty."""
 
@@ -193,6 +196,7 @@ class TestGenerateScenarios:
         assert (samples[:, 1] <= 15).all()
 
 
+@pytest.mark.gpu
 class TestTwoStageQP:
     """Test two-stage quadratic programs."""
 
