@@ -76,7 +76,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install numpy scipy pytest pytest-cov torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy scipy pytest pytest-cov
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           
       - name: Install cuprox (Python only)
         run: |
