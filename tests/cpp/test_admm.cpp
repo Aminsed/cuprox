@@ -37,7 +37,9 @@ QPProblem<T> make_qp(
     const std::vector<T>& A_values,
     const std::vector<T>& q,
     const std::vector<T>& l,
-    const std::vector<T>& u
+    const std::vector<T>& u,
+    const std::vector<T>& var_lb = {},
+    const std::vector<T>& var_ub = {}
 ) {
     QPProblem<T> qp;
     qp.P = make_diagonal_matrix(P_diag);
@@ -52,6 +54,16 @@ QPProblem<T> make_qp(
     
     qp.u.resize(m);
     qp.u.copy_from_host(u.data(), m);
+    
+    // Variable bounds (optional)
+    if (!var_lb.empty()) {
+        qp.lb.resize(n);
+        qp.lb.copy_from_host(var_lb.data(), n);
+    }
+    if (!var_ub.empty()) {
+        qp.ub.resize(n);
+        qp.ub.copy_from_host(var_ub.data(), n);
+    }
     
     return qp;
 }

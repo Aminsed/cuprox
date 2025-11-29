@@ -162,6 +162,8 @@ PYBIND11_MODULE(_core, m) {
         py::array_t<double, py::array::c_style | py::array::forcecast> q,
         py::array_t<double, py::array::c_style | py::array::forcecast> l,
         py::array_t<double, py::array::c_style | py::array::forcecast> u,
+        py::array_t<double, py::array::c_style | py::array::forcecast> var_lb,
+        py::array_t<double, py::array::c_style | py::array::forcecast> var_ub,
         cuprox::Index P_n,
         cuprox::Index A_m,
         cuprox::Index A_n,
@@ -181,6 +183,8 @@ PYBIND11_MODULE(_core, m) {
         auto q_buf = q.request();
         auto l_buf = l.request();
         auto u_buf = u.request();
+        auto var_lb_buf = var_lb.request();
+        auto var_ub_buf = var_ub.request();
         
         // Create QP problem
         cuprox::QPProblem<double> qp;
@@ -203,6 +207,12 @@ PYBIND11_MODULE(_core, m) {
         qp.l.copy_from_host(static_cast<double*>(l_buf.ptr), A_m);
         qp.u.resize(A_m);
         qp.u.copy_from_host(static_cast<double*>(u_buf.ptr), A_m);
+        
+        // Variable bounds
+        qp.lb.resize(A_n);
+        qp.lb.copy_from_host(static_cast<double*>(var_lb_buf.ptr), A_n);
+        qp.ub.resize(A_n);
+        qp.ub.copy_from_host(static_cast<double*>(var_ub_buf.ptr), A_n);
         
         // Configure solver
         cuprox::AdmmSettings<double> settings;
@@ -247,6 +257,8 @@ PYBIND11_MODULE(_core, m) {
         py::arg("q"),
         py::arg("l"),
         py::arg("u"),
+        py::arg("var_lb"),
+        py::arg("var_ub"),
         py::arg("P_n"),
         py::arg("A_m"),
         py::arg("A_n"),

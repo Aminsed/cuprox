@@ -429,6 +429,12 @@ def _solve_gpu(
         qp_l = np.where(np.isinf(qp_l), -1e20, qp_l)
         qp_u = np.where(np.isinf(qp_u), 1e20, qp_u)
         
+        # Variable bounds
+        var_lb = np.ascontiguousarray(lb, dtype=np.float64)
+        var_ub = np.ascontiguousarray(ub, dtype=np.float64)
+        var_lb = np.where(np.isinf(var_lb), -1e20, var_lb)
+        var_ub = np.where(np.isinf(var_ub), 1e20, var_ub)
+        
         raw_result = _core.solve_qp_admm(
             P_row_offsets=P_indptr,
             P_col_indices=P_indices,
@@ -439,6 +445,8 @@ def _solve_gpu(
             q=c,
             l=qp_l,
             u=qp_u,
+            var_lb=var_lb,
+            var_ub=var_ub,
             P_n=P_n,
             A_m=m,
             A_n=n,

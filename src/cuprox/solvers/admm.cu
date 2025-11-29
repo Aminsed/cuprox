@@ -104,6 +104,18 @@ void AdmmSolver<T>::initialize(QPProblem<T>& problem) {
     l_ = &problem.l;
     u_ = &problem.u;
     
+    // Variable bounds (optional)
+    if (problem.lb.size() == n_) {
+        problem_lb_ = &problem.lb;
+    } else {
+        problem_lb_ = nullptr;
+    }
+    if (problem.ub.size() == n_) {
+        problem_ub_ = &problem.ub;
+    } else {
+        problem_ub_ = nullptr;
+    }
+    
     // Initialize rho
     if (settings_.rho == T(0)) {
         // Auto-select rho based on problem data
@@ -184,7 +196,7 @@ void AdmmSolver<T>::x_update() {
     
     T r_norm_sq = cg_r_.dot(cg_r_);
     T rhs_norm = rhs_.norm2();
-    T tol = settings_.cg_tolerance * std::max(rhs_norm, T(1));
+    T tol = settings_.cg_tol * std::max(rhs_norm, T(1));
     
     for (int cg_iter = 0; cg_iter < settings_.cg_max_iters; ++cg_iter) {
         if (std::sqrt(r_norm_sq) < tol) {
@@ -326,6 +338,70 @@ void AdmmSolver<T>::update_rho() {
 }
 
 template <typename T>
+void AdmmSolver<T>::solve_unconstrained() {
+    // Solve unconstrained QP: minimize (1/2)x'Px + q'x
+    // Optimality condition: Px + q = 0, so Px = -q
+    // Use CG to solve: Px = -q
+    
+    int num_blocks = (n_ + kBlockSize - 1) / kBlockSize;
+    
+    // Initialize: x = 0
+    x_.fill(T(0));
+    
+    // r = -q - Px (= -q since x=0)
+    cg_r_.copy_from(*q_);
+    cg_r_.scale(T(-1));
+    
+    // p = r
+    cg_p_.copy_from(cg_r_);
+    
+    T r_norm_sq = cg_r_.dot(cg_r_);
+    T r0_norm = std::sqrt(r_norm_sq);
+    
+    // CG iterations to solve Px = -q
+    for (int cg_iter = 0; cg_iter < settings_.cg_max_iters; ++cg_iter) {
+        // Ap = P * p
+        cg_Ap_.fill(T(0));
+        P_->spmv(T(1), cg_p_, T(0), cg_Ap_);
+        
+        T pAp = cg_p_.dot(cg_Ap_);
+        if (std::abs(pAp) < T(1e-14)) break;
+        
+        T alpha = r_norm_sq / pAp;
+        
+        // x = x + alpha * p
+        kernels::cg_update_x_kernel<<<num_blocks, kBlockSize>>>(
+            x_.data(), cg_p_.data(), alpha, n_);
+        
+        // r = r - alpha * Ap
+        kernels::cg_update_r_kernel<<<num_blocks, kBlockSize>>>(
+            cg_r_.data(), cg_Ap_.data(), alpha, n_);
+        CUPROX_CUDA_CHECK_LAST();
+        
+        T r_norm_sq_new = cg_r_.dot(cg_r_);
+        
+        // Check convergence
+        if (std::sqrt(r_norm_sq_new) < settings_.cg_tol * (r0_norm + T(1))) break;
+        
+        T beta = r_norm_sq_new / r_norm_sq;
+        r_norm_sq = r_norm_sq_new;
+        
+        // p = r + beta * p
+        kernels::cg_update_p_kernel<<<num_blocks, kBlockSize>>>(
+            cg_p_.data(), cg_r_.data(), beta, n_);
+        CUPROX_CUDA_CHECK_LAST();
+    }
+    
+    // Apply box constraints to x if they exist
+    if (problem_lb_ && problem_ub_ && problem_lb_->size() == n_ && problem_ub_->size() == n_) {
+        int num_blocks_n = (n_ + kBlockSize - 1) / kBlockSize;
+        kernels::project_box_kernel<<<num_blocks_n, kBlockSize>>>(
+            x_.data(), problem_lb_->data(), problem_ub_->data(), n_);
+        CUPROX_CUDA_CHECK_LAST();
+    }
+}
+
+template <typename T>
 AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
     auto start_time = std::chrono::high_resolution_clock::now();
     
@@ -334,23 +410,36 @@ AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
     AdmmResult<T> result;
     result.status = Status::MaxIterations;
     
-    for (iter_ = 1; iter_ <= settings_.max_iters; ++iter_) {
-        x_update();
-        z_update();
-        y_update();
-        
-        if (iter_ % settings_.check_interval == 0) {
-            if (check_convergence()) {
-                result.status = Status::Optimal;
-                break;
-            }
+    // Special case: unconstrained QP (m = 0)
+    // Solve Px = -q directly using CG
+    if (m_ == 0) {
+        solve_unconstrained();
+        result.status = Status::Optimal;
+        iter_ = 1;
+    } else {
+        for (iter_ = 1; iter_ <= settings_.max_iters; ++iter_) {
+            x_update();
+            z_update();
+            y_update();
             
-            update_rho();
+            if (iter_ % settings_.check_interval == 0) {
+                if (check_convergence()) {
+                    result.status = Status::Optimal;
+                    break;
+                }
+                
+                update_rho();
+            }
         }
     }
     
-    // Compute final residuals
-    compute_residuals();
+    // Compute final residuals (skip if unconstrained)
+    if (m_ > 0) {
+        compute_residuals();
+    } else {
+        primal_res_ = T(0);
+        dual_res_ = T(0);
+    }
     
     auto end_time = std::chrono::high_resolution_clock::now();
     double elapsed = std::chrono::duration<double>(end_time - start_time).count();

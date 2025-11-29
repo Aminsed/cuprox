@@ -29,7 +29,7 @@ struct AdmmSettings {
     
     // CG settings for x-update
     int cg_max_iters = 100;
-    T cg_tolerance = T(1e-10);
+    T cg_tol = T(1e-10);
 };
 
 /**
@@ -54,6 +54,7 @@ struct AdmmResult {
  * Standard form:
  *   minimize    (1/2)x'Px + q'x
  *   subject to  l <= Ax <= u
+ *               lb <= x <= ub
  */
 template <typename T>
 struct QPProblem {
@@ -62,8 +63,10 @@ struct QPProblem {
     DeviceVector<T> q;      // Linear cost (n,)
     DeviceVector<T> l;      // Lower bound on Ax (m,)
     DeviceVector<T> u;      // Upper bound on Ax (m,)
+    DeviceVector<T> lb;     // Variable lower bounds (n,)
+    DeviceVector<T> ub;     // Variable upper bounds (n,)
     
-    Index num_vars() const { return A.num_cols(); }
+    Index num_vars() const { return q.size(); }
     Index num_constraints() const { return A.num_rows(); }
 };
 
@@ -98,6 +101,7 @@ private:
     bool check_convergence();
     void compute_residuals();
     void update_rho();
+    void solve_unconstrained();  // Special case for m=0
     
     AdmmSettings<T> settings_;
     
@@ -131,8 +135,10 @@ private:
     CsrMatrix<T>* P_ = nullptr;
     CsrMatrix<T>* A_ = nullptr;
     DeviceVector<T>* q_ = nullptr;
-    DeviceVector<T>* l_ = nullptr;
-    DeviceVector<T>* u_ = nullptr;
+    DeviceVector<T>* l_ = nullptr;           // Constraint bounds
+    DeviceVector<T>* u_ = nullptr;           // Constraint bounds
+    DeviceVector<T>* problem_lb_ = nullptr;  // Variable lower bounds
+    DeviceVector<T>* problem_ub_ = nullptr;  // Variable upper bounds
     
     // Residuals
     T primal_res_ = T(0);
