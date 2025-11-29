@@ -101,11 +101,12 @@ def simple_qp():
     """
     Simple QP problem for testing.
     
-    minimize: x^2 + y^2 - 2x - 4y
+    minimize: (1/2)(2x^2 + 2y^2) - 2x - 4y = x^2 + y^2 - 2x - 4y
     subject to: x + y <= 3
                 x, y >= 0
                 
-    Optimal: x=1, y=2, obj=-5
+    Unconstrained optimal: x=1, y=2
+    Constraint x+y<=3 is not binding at (1,2) since 1+2=3, so optimal is (1,2), obj=-5
     """
     P = np.array([
         [2.0, 0.0],
@@ -129,6 +130,30 @@ def simple_qp():
     }
 
 
+@pytest.fixture
+def unconstrained_qp():
+    """
+    Unconstrained QP with closed-form solution.
+    
+    minimize: (1/2)x'Px + q'x
+    where P = 2I, q = [-2, -4]
+    
+    Solution: x = P^{-1}(-q) = [1, 2], obj = -5
+    """
+    P = np.array([
+        [2.0, 0.0],
+        [0.0, 2.0],
+    ])
+    q = np.array([-2.0, -4.0])
+    
+    return {
+        "P": P,
+        "c": q,
+        "expected_obj": -5.0,
+        "expected_x": np.array([1.0, 2.0]),
+    }
+
+
 # ============================================================================
 # Markers
 # ============================================================================
@@ -138,6 +163,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: marks tests as slow")
     config.addinivalue_line("markers", "gpu: marks tests that require GPU")
     config.addinivalue_line("markers", "benchmark: marks benchmark tests")
+    config.addinivalue_line("markers", "integration: marks integration tests")
 
 
 # ============================================================================
@@ -154,3 +180,9 @@ def requires_gpu():
     except ImportError:
         pytest.skip("cuprox C++ extension not built")
 
+
+@pytest.fixture
+def requires_scipy():
+    """Skip test if scipy is not available."""
+    if not HAS_SCIPY:
+        pytest.skip("scipy not available")

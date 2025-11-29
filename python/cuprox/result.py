@@ -164,8 +164,8 @@ class SolveResult:
         """
         status_map = {
             0: Status.OPTIMAL,
-            1: Status.INFEASIBLE,
-            2: Status.UNBOUNDED,
+            1: Status.PRIMAL_INFEASIBLE,
+            2: Status.DUAL_INFEASIBLE,
             3: Status.MAX_ITERATIONS,
             4: Status.TIME_LIMIT,
             5: Status.NUMERICAL_ERROR,

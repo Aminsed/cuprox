@@ -51,6 +51,9 @@ from .exceptions import (
     UnboundedError,
     NumericalError,
     TimeoutError,
+    DimensionError,
+    InvalidInputError,
+    DeviceError,
 )
 
 __all__ = [
@@ -78,6 +81,9 @@ __all__ = [
     "UnboundedError",
     "NumericalError",
     "TimeoutError",
+    "DimensionError",
+    "InvalidInputError",
+    "DeviceError",
 ]
 
 
