@@ -2,12 +2,6 @@
 # cuProx Core Library
 # ============================================================================
 
-# Collect source files
-set(CUPROX_CORE_SOURCES
-    # Core (CPU)
-    # core/error.cpp  # Will be added later
-)
-
 set(CUPROX_CORE_HEADERS
     core/types.hpp
     core/error.hpp
@@ -18,27 +12,31 @@ set(CUPROX_CORE_HEADERS
 # ============================================================================
 
 if(CUPROX_HAS_CUDA)
-    # GPU-enabled build
+    set(CUPROX_CUDA_HEADERS
+        core/memory.cuh
+        core/cuda_context.cuh
+        core/dense_vector.cuh
+        core/sparse_matrix.cuh
+        linalg/projections.cuh
+    )
+    
     set(CUPROX_CUDA_SOURCES
-        # Will be populated as we implement:
-        # core/memory.cu
-        # core/dense_vector.cu
-        # core/sparse_matrix.cu
-        # linalg/blas.cu
-        # linalg/spmv.cu
-        # linalg/projections.cu
-        # preprocess/scaling.cu
-        # solvers/pdhg.cu
-        # solvers/admm.cu
+        core/dense_vector.cu
+        linalg/projections.cu
     )
     
     add_library(cuprox_core STATIC
-        ${CUPROX_CORE_SOURCES}
         ${CUPROX_CUDA_SOURCES}
         ${CUPROX_CORE_HEADERS}
+        ${CUPROX_CUDA_HEADERS}
     )
     
     target_compile_definitions(cuprox_core PUBLIC CUPROX_HAS_CUDA)
+    
+    set_target_properties(cuprox_core PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+    )
     
     target_link_libraries(cuprox_core PUBLIC
         CUDA::cudart
@@ -47,39 +45,27 @@ if(CUPROX_HAS_CUDA)
     )
     
 else()
-    # CPU-only build
-    set(CUPROX_CPU_SOURCES
-        # cpu_fallback/cpu_pdhg.cpp
-        # cpu_fallback/cpu_admm.cpp
-    )
-    
-    add_library(cuprox_core STATIC
-        ${CUPROX_CORE_SOURCES}
-        ${CUPROX_CPU_SOURCES}
-        ${CUPROX_CORE_HEADERS}
-    )
+    # CPU-only build - minimal header-only
+    add_library(cuprox_core INTERFACE)
+    target_compile_definitions(cuprox_core INTERFACE CUPROX_CPU_ONLY)
 endif()
 
 # ============================================================================
 # Target Properties
 # ============================================================================
 
-target_include_directories(cuprox_core PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
-    $<INSTALL_INTERFACE:include>
-)
-
-# Precision configuration
-if(CUPROX_USE_DOUBLE)
-    target_compile_definitions(cuprox_core PUBLIC CUPROX_USE_DOUBLE)
+if(CUPROX_HAS_CUDA)
+    target_include_directories(cuprox_core PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+        $<INSTALL_INTERFACE:include>
+    )
 else()
-    target_compile_definitions(cuprox_core PUBLIC CUPROX_USE_FLOAT)
-endif()
-
-# Eigen dependency (for CPU fallback and utilities)
-if(TARGET Eigen3::Eigen)
-    target_link_libraries(cuprox_core PUBLIC Eigen3::Eigen)
+    target_include_directories(cuprox_core INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+        $<INSTALL_INTERFACE:include>
+    )
 endif()
 
 # ============================================================================
@@ -87,4 +73,3 @@ endif()
 # ============================================================================
 
 add_library(cuprox::core ALIAS cuprox_core)
-
