@@ -1,0 +1,251 @@
+# ============================================================================
+# cuProx - GPU-Accelerated First-Order LP/QP Solver
+# ============================================================================
+
+[build-system]
+requires = [
+    "scikit-build-core>=0.8",
+    "pybind11>=2.11",
+    "numpy>=1.20",
+]
+build-backend = "scikit_build_core.build"
+
+# ============================================================================
+# Project Metadata
+# ============================================================================
+
+[project]
+name = "cuprox"
+version = "0.1.0"
+description = "GPU-accelerated LP/QP optimization solver using first-order proximal methods"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "cuProx Contributors"}
+]
+maintainers = [
+    {name = "cuProx Contributors"}
+]
+keywords = [
+    "optimization",
+    "linear-programming",
+    "quadratic-programming",
+    "gpu",
+    "cuda",
+    "machine-learning",
+    "operations-research",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20",
+    "scipy>=1.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",
+    "hypothesis>=6.0",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "pre-commit>=3.0",
+]
+docs = [
+    "sphinx>=6.0",
+    "sphinx-rtd-theme>=1.0",
+    "myst-parser>=2.0",
+    "sphinxcontrib-napoleon>=0.7",
+]
+benchmark = [
+    "gurobipy>=10.0",
+    "osqp>=0.6",
+    "cvxpy>=1.4",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+]
+torch = [
+    "torch>=2.0",
+]
+all = [
+    "cuprox[dev,docs,benchmark,torch]",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/cuprox"
+Documentation = "https://cuprox.readthedocs.io"
+Repository = "https://github.com/yourusername/cuprox"
+Issues = "https://github.com/yourusername/cuprox/issues"
+Changelog = "https://github.com/yourusername/cuprox/blob/main/CHANGELOG.md"
+
+# ============================================================================
+# scikit-build-core Configuration
+# ============================================================================
+
+[tool.scikit-build]
+cmake.build-type = "Release"
+cmake.verbose = false
+wheel.packages = ["python/cuprox"]
+wheel.license-files = ["LICENSE"]
+sdist.include = [
+    "src/**",
+    "cmake/**",
+    "tests/**",
+]
+sdist.exclude = [
+    "tests/data/netlib/*.mps",
+]
+
+[tool.scikit-build.cmake.define]
+CUPROX_BUILD_TESTS = "OFF"
+CUPROX_BUILD_PYTHON = "ON"
+CUPROX_BUILD_BENCHMARKS = "OFF"
+
+# ============================================================================
+# cibuildwheel Configuration
+# ============================================================================
+
+[tool.cibuildwheel]
+skip = ["*-musllinux*", "pp*", "*-win32", "*_i686"]
+build = ["cp39-*", "cp310-*", "cp311-*", "cp312-*"]
+test-requires = ["pytest", "numpy", "scipy"]
+test-command = "pytest {project}/tests/python -x -v --ignore={project}/tests/python/benchmarks"
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "manylinux2014"
+before-all = [
+    # Install CUDA toolkit (will be customized per CUDA version)
+    "yum install -y wget",
+]
+environment = { CUDA_HOME="/usr/local/cuda" }
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
+
+[tool.cibuildwheel.macos]
+# macOS builds are CPU-only
+environment = { CUPROX_CPU_ONLY="ON" }
+
+# ============================================================================
+# Ruff (Linting)
+# ============================================================================
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function call in default arg (common in FastAPI)
+]
+
+[tool.ruff.isort]
+known-first-party = ["cuprox"]
+
+[tool.ruff.per-file-ignores]
+"tests/**" = ["S101"]  # Allow assert in tests
+"__init__.py" = ["F401"]  # Allow unused imports in __init__
+
+# ============================================================================
+# Black (Formatting)
+# ============================================================================
+
+[tool.black]
+target-version = ["py39", "py310", "py311", "py312"]
+line-length = 100
+
+# ============================================================================
+# MyPy (Type Checking)
+# ============================================================================
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_optional = true
+no_implicit_optional = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "scipy.*",
+    "cuprox._core",
+]
+ignore_missing_imports = true
+
+# ============================================================================
+# pytest Configuration
+# ============================================================================
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "-ra",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: marks tests that require GPU hardware",
+    "benchmark: marks benchmark tests",
+    "integration: marks integration tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:scipy.*",
+]
+
+# ============================================================================
+# Coverage Configuration
+# ============================================================================
+
+[tool.coverage.run]
+source = ["python/cuprox"]
+branch = true
+parallel = true
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+fail_under = 80
+show_missing = true
+

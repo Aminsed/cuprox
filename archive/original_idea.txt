@@ -1,0 +1,93 @@
+Project Description: Building cuOptima - A World-Beating GPU-Accelerated Optimization Solver
+Executive Summary
+We are tasking your team of elite libcu++ developers to architect and implement cuOptima, an open-source, GPU-accelerated optimization solver that surpasses leading commercial tools like Gurobi, CPLEX, and XPRESS in speed, scalability, and robustness for large-scale problems. cuOptima will leverage NVIDIA's libcu++ for heterogeneous C++ programming, enabling seamless CPU-GPU orchestration to achieve 10-200x speedups on massive instances (e.g., billions of variables/constraints) in linear programming (LP), mixed-integer programming (MIP), quadratic programming (QP), and beyond. The end product will be a PyPI-installable Python package (pip install cuoptima), with C++ core for performance, Python bindings for usability, and comprehensive documentation. This solver will target industries like finance (portfolio optimization), logistics (vehicle routing), energy (optimal power flow), and AI (differentiable optimization layers), positioning it as the de facto standard for GPU-enabled operations research.
+The project timeline is 12-18 months, with milestones for prototyping (3 months), core solver implementation (6 months), extensions and optimizations (4 months), testing/benchmarks (3 months), and packaging/release (2 months). Budget includes access to NVIDIA DGX systems (e.g., H100 clusters) for development and benchmarking against MIPLIB, Netlib, and custom datasets. Success metrics: Achieve >50x average speedup vs. Gurobi on LP benchmarks (e.g., Mittelmann's), solve exascale MIPs in minutes, and demonstrate real-time capabilities in production scenarios.
+Key Goals and Differentiators
+
+Performance Supremacy: Outperform Gurobi's partial GPU support (limited to PDHG in v13.0) by fully GPU-accelerating all components, including branch-and-bound for MIP and interior-point for NLP.
+Scalability: Handle problems 10-100x larger than CPU solvers, leveraging GPU memory (e.g., 80GB on H100) and multi-GPU distribution via NCCL.
+Robustness: Numerical stability via mixed-precision (FP16/32/64), adaptive tolerances, and fallback to CPU for edge cases.
+Usability: Python-first API similar to CVXPY/GurobiPy, with auto-differentiation support (e.g., via PyTorch integration) for ML-embedded optimization.
+Open-Source Edge: Unlike proprietary Gurobi, cuOptima will be MIT-licensed, fostering community contributions while incorporating cutting-edge research (e.g., restarted Halpern PDHG from cuPDLP+).
+Insane Impressiveness: Integrate AI-assisted heuristics (e.g., graph neural nets for branching), quantum-inspired techniques (e.g., simulated annealing on GPU), and real-time streaming optimization for dynamic problems.
+
+Technical Stack and Dependencies
+
+Core Language: C++20/23 for the solver engine, with heavy use of libcu++ for GPU-standard library equivalents (e.g., cuda::std::vector, cuda::std::atomic, cuda::barrier for synchronization).
+GPU Framework: CUDA 12+ (targeting Ampere/Hopper/Blackwell architectures), cuBLAS/cuSOLVER for linear algebra, cuDSS for sparse direct solvers, Thrust/CUB for parallel primitives.
+Python Bindings: pybind11 or nanobind for exposing C++ classes to Python, ensuring seamless integration with NumPy/PyTorch/SciPy.
+Build System: CMake for C++ compilation, scikit-build-core (via pyproject.toml) for Python packaging, supporting CUDA extensions with wheel generation for multiple CUDA versions (11.x-12.x).
+Dependencies: Eigen or custom sparse matrix libs (CPU fallback), Google Benchmark/OrTools for testing, PyTorch for optional differentiable modes.
+Hardware Targets: NVIDIA GPUs (Volta+), with fallback to CPU via OpenMP/std::execution for non-GPU users.
+Best Practices for PyPI: Use pyproject.toml with setuptools backend; provide source distributions (sdist) and binary wheels (via cibuildwheel) for Linux/Windows/macOS, handling CUDA toolkit detection via environment variables (e.g., CUDA_HOME). Include setup scripts to check CUDA availability and warn on installation. Versioning: Semantic (e.g., 1.0.0), with CI/CD via GitHub Actions for automated builds/tests on GPU runners.
+
+High-Level Architecture
+cuOptima's architecture is modular, layered, and heterogeneous: A C++ core for compute-intensive tasks, with GPU offloading managed by libcu++ to abstract CPU/GPU differences. The design draws from cuOpt (for MILP/VRP), cuPDLP (for LP first-order methods), and MadNLP (for NLP interiors), but extends them with full MIP parallelism and conic support. Key layers:
+
+User Interface Layer (Python API):
+Model Builder: Python classes like Model, Variable, Constraint (mirroring Gurobi's GRBModel). Users build problems via expressive syntax: model.add_var(lb=0, ub=1, type='binary'), model.add_constr(x + y <= 1).
+Solver Interface: Optimizer class with methods like solve(model, params={}). Supports callbacks for custom cuts/heuristics.
+Integration Hooks: PyTorch-compatible for end-to-end differentiability (e.g., via custom autograd functions wrapping GPU solves).
+Why GPU-Enhanced?: Model parsing on CPU, but large-scale data transfer to GPU via unified memory (cudaMallocManaged) for zero-copy.
+
+Preprocessing Layer (C++ Module: presolve.cu):
+Components: Sparse matrix compressor (using libcu++'s cuda::std::sort for COO to CSR conversion), bound tightener (parallel propagation with cuda::std::for_each), redundancy remover (GPU-parallel constraint scanning).
+libcu++ Usage: cuda::barrier for multi-thread sync in parallel reductions; cuda::std::atomic for shared updates during domain propagation.
+GPU Benefits: Process 1M+ constraints in ms; adaptive to problem sparsity.
+Extensions: Symmetry detection via graph isomorphism on GPU (using Thrust for parallel BFS).
+
+Core Solver Engines (C++ Namespaces: lp_solver, mip_solver, qp_solver):
+LP Solver (lp_solver.cu): Hybrid first/second-order engine.
+Primary Algorithm: Restarted Halpern PDHG (from cuPDLP+), with GPU kernels for matrix-vector multiplies (cuBLAS gemv), projections (custom Thrust functors), and preconditioning (Ruiz equilibration parallelized via libcu++'s cuda::std::transform).
+Fallback: Barrier method with cuDSS for Cholesky factorizations; simplex for small/ill-conditioned problems (CPU-only initially, GPU-port later).
+libcu++ Enhancements: Heterogeneous loops (cuda::std::for_each on device views) for iterative updates; cuda::std::mutex analogs for rare locks.
+World-Beating Edge: Achieve 200x speedup on Netlib benchmarks by batching multiple LPs (e.g., for stochastic programming); support FP16 for ultra-large problems.
+
+MIP Solver (mip_solver.cu): Parallel branch-and-bound with GPU node pool.
+Components: Node manager (priority queue via libcu++'s cuda::std::priority_queue on device), branching rules (pseudocost/strong via parallel evaluations), fathoming (GPU reductions for bound checks).
+Integration: Calls LP solver for relaxations; parallelizes 1000+ nodes per iteration using multi-block kernels.
+libcu++ Usage: cuda::barrier for sync across warps in cut generation; cuda::std::thread for hybrid CPU-GPU orchestration (e.g., CPU handles I/O, GPU computes).
+Heuristics: GPU-parallel diving/rounding (Thrust-based); AI integration via PyTorch CUDA tensors for learned branching.
+World-Beating Edge: Solve MIPLIB-hard instances 50x faster than Gurobi by exploring 1M+ nodes/sec on H100; distributed mode via NCCL for multi-GPU trees.
+
+QP/Conic Solver (qp_solver.cu): Extends LP to quadratic terms.
+Algorithms: Operator-splitting (PDHG variants for QCQP); interior-point with GPU Krylov (cuSOLVER for CG/PCG).
+libcu++ Usage: cuda::std::accumulate for quadratic form computations; device vectors for cone projections (SOCP/SDP).
+Extensions: SDP via cuHALLaR-inspired relaxations; GPU-parallel cut separators for nonconvex.
+World-Beating Edge: Handle 1M-var portfolio QPs in ms, enabling real-time finance; outperform OSQP by 100x on dense quadratics.
+
+
+Advanced Modules (C++: heuristics.cu, parallelism.cu):
+Heuristics Engine: GPU-metaheuristics (e.g., large neighborhood search parallelized across 10k threads); integration with GNNs for prediction.
+Cutting Planes: Generator for Gomory/flow covers, separated in parallel batches (libcu++'s cuda::std::find_if for violations).
+Parallelism Framework: Central dispatcher using libcu++ for policy-based execution (e.g., std::execution::par on GPU); supports multi-stream CUDA for overlapping compute/I/O.
+Distributed Mode: NCCL collectives for multi-GPU (e.g., all-reduce for global bounds).
+
+Utility and Infrastructure Layer (C++: utils.cu):
+Data Structures: Sparse matrix (CSR/CSC with libcu++ device allocators), variable/constraint pools (concurrent with cuda::std::mutex).
+Numerical Handlers: Mixed-precision manager (TF32 for speed, FP64 for accuracy); tolerance adapters based on iteration stats.
+Logging/Error System: Verbose GPU-side printf with host sync; exceptions propagated via cudaError checks.
+
+
+Implementation Guidelines
+
+Code Structure: Monorepo with /src (C++), /python (bindings), /tests, /benchmarks. Use namespaces (e.g., cuoptima::lp) and templates for genericity.
+GPU-Specific Optimizations: Minimize host-device transfers (unified memory); coalesce accesses; tune block/thread sizes dynamically. Profile with Nsight Compute.
+Robustness Features: Warm-starting from previous solves; restart checkpoints; automatic CPU fallback if GPU OOM.
+Security/Edge Cases: Input validation in Python; handle ill-posed models with diagnostics.
+Documentation: Doxygen for C++, Sphinx for Python; examples for portfolio opt, VRP, OPF.
+
+Testing and Benchmarking
+
+Unit/Integration Tests: Google Test for modules; cover 95% code with GPU/CPU variants.
+Benchmarks: Vs. Gurobi/CPLEX on MIPLIB, QPLIB, OPF datasets; measure time, gap, scalability. Target: Solve 1B-var LP in <1 min on DGX.
+CI/CD: GitHub Actions with GPU runners; nightly benchmarks.
+
+Packaging and Deployment for PyPI
+
+Setup: pyproject.toml with [build-system] requires = ["scikit-build-core", "pybind11"]; [tool.scikit-build] cmake.args for CUDA flags.
+Wheel Building: Use cibuildwheel to generate platform-specific wheels (e.g., manylinux for Linux+CUDA); include CUDA runtime deps.
+Installation Flow: pip install cuoptima detects CUDA; if missing, installs CPU-only version with warning.
+Version Control: Start at 0.1.0-alpha; release notes with benchmark diffs.
+
+This architecture ensures cuOptima is not just competitive but revolutionary, leveraging your libcu++ expertise to redefine optimization. Deliver prototypes iteratively, and let's crush the benchmarks!
