@@ -100,7 +100,7 @@ jobs:
           fail_ci_if_error: false
 
   # ============================================================
-  # Build check - verify package builds
+  # Build check - verify package builds locally
   # ============================================================
   build:
     name: Build Package
@@ -115,13 +115,10 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           
       - name: Install build tools
-        run: pip install build twine
+        run: pip install build
         
       - name: Build sdist
         run: python -m build --sdist
-        
-      - name: Check package
-        run: twine check dist/*
         
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -24,6 +24,15 @@
 
 cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and **convex Quadratic Programs (QP)**. It uses first-order proximal methods (PDHG, ADMM) that are perfectly suited for GPU parallelization.
 
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Fast** | 10-100x speedup over CPU solvers on large problems |
+| **Focused** | LP and QP only — does one thing exceptionally well |
+| **Batch Solving** | Solve 1000s of problems in parallel (unique capability) |
+| **ML-Ready** | PyTorch integration for differentiable optimization |
+| **Fallback** | Automatic CPU fallback if no GPU available |
 
 ### When to Use cuProx
 
@@ -34,7 +43,7 @@ cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and
 - ML training with optimization layers
 - Moderate accuracy requirements (1e-4 to 1e-6)
 
-**Don't use cuProx for:**
+**Not recommended for:**
 - Mixed-integer programming (use Gurobi, HiGHS)
 - Very high precision (1e-10+, use interior-point)
 - Small single problems (GPU overhead)
@@ -44,27 +53,50 @@ cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and
 
 ## Installation
 
-### From PyPI (Recommended)
+cuProx is built from source to ensure optimal performance for your specific hardware. See [INSTALL.md](INSTALL.md) for detailed instructions.
+
+### Quick Start (GPU Build)
+
+**Prerequisites:**
+- CUDA Toolkit 11.4+
+- CMake 3.24+
+- Python 3.9+
+- C++ compiler (GCC 7+ or Clang)
 
 ```bash
-pip install cuprox
+# Clone the repository
+git clone https://github.com/Aminsed/cuprox.git
+cd cuprox
+
+# Build the C++ library and Python bindings
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+
+# Install the Python package (from project root)
+cd ..
+pip install -e python/
 ```
 
-This automatically installs the right version for your CUDA setup.
+### Quick Start (CPU Only)
 
-### Requirements
+For development or systems without CUDA:
 
-- Python 3.9+
-- NVIDIA GPU (Volta or newer: V100, RTX 2080+, T4, A100, etc.)
-- CUDA 11.4+ (auto-detected)
+```bash
+git clone https://github.com/Aminsed/cuprox.git
+cd cuprox
+pip install -e python/
+```
 
 ### Verify Installation
 
 ```python
 import cuprox
 print(f"cuProx version: {cuprox.__version__}")
-print(f"CUDA available: {cuprox.__cuda_available__}")
+print(f"CUDA available: {cuprox.__cuda_available__}")  # True = GPU ready!
 ```
+
+For comprehensive installation instructions including troubleshooting, see [INSTALL.md](INSTALL.md).
 
 ---
 
@@ -234,13 +266,12 @@ Unlike interior-point methods (which require Cholesky factorization — poorly p
 
 | Feature | cuProx | Gurobi | HiGHS | OSQP | SCS |
 |---------|--------|--------|-------|------|-----|
-| GPU acceleration | ✅ Full | ⚠️ Limited | ❌ | ❌ | ❌ |
-| Batch solving | ✅ Native | ❌ | ❌ | ❌ | ❌ |
-| pip install | ✅ | ✅ ($$$) | ✅ | ✅ | ✅ |
-| LP support | ✅ | ✅ | ✅ | ❌ | ✅ |
-| QP support | ✅ | ✅ | ❌ | ✅ | ✅ |
-| MIP support | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Open source | ✅ MIT | ❌ | ✅ | ✅ | ✅ |
+| GPU acceleration | Yes (Full) | Limited | No | No | No |
+| Batch solving | Yes (Native) | No | No | No | No |
+| LP support | Yes | Yes | Yes | No | Yes |
+| QP support | Yes | Yes | No | Yes | Yes |
+| MIP support | No | Yes | Yes | No | No |
+| Open source | Yes (MIT) | No | Yes | Yes | Yes |
 
 ---
 
@@ -285,6 +316,11 @@ class SolveResult:
 - [x] LP solver (PDHG)
 - [x] QP solver (ADMM)
 - [x] Batch solving
+- [x] CPU fallback
+- [ ] PyTorch autograd integration
+- [ ] Windows support
+- [ ] Multi-GPU support
+- [ ] SOCP extension
 
 ---
 
@@ -296,8 +332,19 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 # Development setup
 git clone https://github.com/Aminsed/cuprox.git
 cd cuprox
-pip install -e ".[dev]"
-pytest tests/
+
+# Build C++ library
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Debug -DCUPROX_BUILD_TESTS=ON
+make -j$(nproc)
+
+# Install Python package in development mode
+cd ..
+pip install -e "python/[dev]"
+
+# Run tests
+pytest tests/python/
+ctest --test-dir build --output-on-failure
 ```
 
 ---
@@ -309,7 +356,7 @@ If you use cuProx in your research, please cite:
 ```bibtex
 @software{cuprox2024,
   title = {cuProx: GPU-Accelerated First-Order LP/QP Solver},
-  year = {2025},
+  year = {2024},
   url = {https://github.com/Aminsed/cuprox}
 }
 ```
@@ -324,11 +371,10 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**Built with ❤️ for the optimization community**
+**Built for the optimization community**
 
 [Report Bug](https://github.com/Aminsed/cuprox/issues) •
 [Request Feature](https://github.com/Aminsed/cuprox/issues) •
 [Discussions](https://github.com/Aminsed/cuprox/discussions)
 
 </div>
-
