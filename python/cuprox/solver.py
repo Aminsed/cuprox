@@ -5,7 +5,8 @@ cuProx Solver Functions
 Core solving functions for LP and QP problems.
 """
 
-from typing import Optional, Dict, List, Any, Union
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 
 try:
@@ -15,14 +16,14 @@ try:
 except ImportError:
     HAS_SCIPY = False
 
-from .result import SolveResult, Status
 from .exceptions import (
-    InvalidInputError,
     DimensionError,
     InfeasibleError,
-    UnboundedError,
+    InvalidInputError,
     NumericalError,
+    UnboundedError,
 )
+from .result import SolveResult, Status
 
 # Default solver parameters
 DEFAULT_PARAMS = {
