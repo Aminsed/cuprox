@@ -89,6 +89,13 @@ tests/data/netlib/*.gz
 .env.local
 *.local.toml
 
+# Planning/design documents (keep local only)
+ARCHITECTURE.md
+RESEARCH.md
+IMPLEMENTATION_PLAN.md
+CONTRIBUTING.md
+archive/
+
 # CMake
 CMakeCache.txt
 CMakeFiles/
