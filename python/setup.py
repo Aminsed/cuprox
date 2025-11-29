@@ -3,14 +3,16 @@ Minimal setup.py for installing cuProx Python package without C++ build.
 
 This is used when:
 1. CUDA is not available
-2. User just wants the CPU fallback
+2. User wants the CPU fallback for development
 3. CI systems without CUDA
 
-For full installation with GPU support, use:
-    pip install cuprox
+For full installation with GPU support, first build the C++ library:
+    mkdir build && cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Release
+    make -j$(nproc)
 
-For CPU-only installation:
-    cd python && pip install -e .
+Then install the Python package:
+    pip install -e python/
 """
 
 from setuptools import find_packages, setup
