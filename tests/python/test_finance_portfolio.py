@@ -10,8 +10,8 @@ Comprehensive tests covering:
 6. Constraints handling
 """
 
-import pytest
 import numpy as np
+import pytest
 
 
 @pytest.fixture
