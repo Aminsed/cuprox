@@ -57,6 +57,8 @@ def solve(
     P: Optional[Any] = None,
     q: Optional[np.ndarray] = None,
     constraint_senses: Optional[np.ndarray] = None,
+    constraint_l: Optional[np.ndarray] = None,  # Lower bound on Ax (for QP)
+    constraint_u: Optional[np.ndarray] = None,  # Upper bound on Ax (for QP)
     params: Optional[Dict[str, Any]] = None,
     warm_start: Optional[SolveResult] = None,
 ) -> SolveResult:
@@ -104,7 +106,12 @@ def solve(
     c, A, b, lb, ub, P = _validate_inputs(c, A, b, lb, ub, P, q)
     
     # Convert constraint senses to l, u bounds for two-sided form
-    constr_l, constr_u = _convert_constraints(b, constraint_senses)
+    if constraint_l is not None and constraint_u is not None:
+        # Use explicit constraint bounds (for QP)
+        constr_l = np.asarray(constraint_l, dtype=np.float64)
+        constr_u = np.asarray(constraint_u, dtype=np.float64)
+    else:
+        constr_l, constr_u = _convert_constraints(b, constraint_senses)
     
     # Determine problem type
     is_qp = P is not None
@@ -390,8 +397,68 @@ def _solve_gpu(
             dual_residual=raw_result.get("dual_residual", 0.0),
         )
     else:
-        # QP: not implemented yet, fall back to CPU
-        return _solve_cpu(c, A, b, lb, ub, P, constr_l, constr_u, params, warm_start)
+        # QP: use ADMM solver
+        if HAS_SCIPY and sparse.isspmatrix_csr(P):
+            P_data = P.data.astype(np.float64)
+            P_indices = P.indices.astype(np.int32)
+            P_indptr = P.indptr.astype(np.int32)
+            P_n = P.shape[0]
+        else:
+            P_sparse = sparse.csr_matrix(P)
+            P_data = P_sparse.data.astype(np.float64)
+            P_indices = P_sparse.indices.astype(np.int32)
+            P_indptr = P_sparse.indptr.astype(np.int32)
+            P_n = P_sparse.shape[0]
+        
+        # Ensure contiguous
+        P_data = np.ascontiguousarray(P_data)
+        P_indices = np.ascontiguousarray(P_indices)
+        P_indptr = np.ascontiguousarray(P_indptr)
+        
+        # For QP, use l and u from constraint conversion
+        # If no explicit constraint_senses given with b=0, use free bounds
+        if np.allclose(constr_l, constr_u) and np.allclose(constr_u, 0):
+            # No meaningful constraints - use large bounds
+            qp_l = np.full(m, -1e20, dtype=np.float64)
+            qp_u = np.full(m, 1e20, dtype=np.float64)
+        else:
+            qp_l = np.ascontiguousarray(constr_l, dtype=np.float64)
+            qp_u = np.ascontiguousarray(constr_u, dtype=np.float64)
+        
+        # Replace inf with large values
+        qp_l = np.where(np.isinf(qp_l), -1e20, qp_l)
+        qp_u = np.where(np.isinf(qp_u), 1e20, qp_u)
+        
+        raw_result = _core.solve_qp_admm(
+            P_row_offsets=P_indptr,
+            P_col_indices=P_indices,
+            P_values=P_data,
+            A_row_offsets=A_indptr,
+            A_col_indices=A_indices,
+            A_values=A_data,
+            q=c,
+            l=qp_l,
+            u=qp_u,
+            P_n=P_n,
+            A_m=m,
+            A_n=n,
+            max_iters=params.get("max_iterations", 4000),
+            eps_abs=params.get("tolerance", 1e-6),
+            eps_rel=params.get("tolerance", 1e-6),
+            rho=params.get("rho", 1.0),
+            verbose=params.get("verbose", False),
+        )
+        
+        return SolveResult(
+            status=Status(raw_result["status"]),
+            objective=float(raw_result["objective"]),
+            x=raw_result["x"],
+            y=raw_result["y"],
+            iterations=raw_result["iterations"],
+            solve_time=raw_result["solve_time"],
+            primal_residual=raw_result.get("primal_residual", 0.0),
+            dual_residual=raw_result.get("dual_residual", 0.0),
+        )
 
 
 def _solve_cpu(

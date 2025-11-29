@@ -20,6 +20,7 @@ if(CUPROX_HAS_CUDA)
         linalg/projections.cuh
         preprocess/scaling.cuh
         solvers/pdhg.cuh
+        solvers/admm.cuh
     )
     
     set(CUPROX_CUDA_SOURCES
@@ -27,6 +28,7 @@ if(CUPROX_HAS_CUDA)
         linalg/projections.cu
         preprocess/scaling.cu
         solvers/pdhg.cu
+        solvers/admm.cu
     )
     
     add_library(cuprox_core STATIC

@@ -43,4 +43,12 @@ if(CUPROX_HAS_CUDA)
         GTest::gtest_main
     )
     gtest_discover_tests(test_pdhg)
+    
+    # ADMM solver tests
+    add_executable(test_admm test_admm.cpp)
+    target_link_libraries(test_admm PRIVATE
+        cuprox::core
+        GTest::gtest_main
+    )
+    gtest_discover_tests(test_admm)
 endif()

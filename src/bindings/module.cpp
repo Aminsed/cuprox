@@ -7,6 +7,7 @@
 #include "cuprox/core/sparse_matrix.cuh"
 #include "cuprox/core/cuda_context.cuh"
 #include "cuprox/solvers/pdhg.cuh"
+#include "cuprox/solvers/admm.cuh"
 #endif
 
 namespace py = pybind11;
@@ -150,6 +151,111 @@ PYBIND11_MODULE(_core, m) {
         py::arg("eps_rel") = 1e-6,
         py::arg("verbose") = false,
         "Solve LP using PDHG on GPU");
+
+    m.def("solve_qp_admm", [](
+        py::array_t<cuprox::Index, py::array::c_style | py::array::forcecast> P_row_offsets,
+        py::array_t<cuprox::Index, py::array::c_style | py::array::forcecast> P_col_indices,
+        py::array_t<double, py::array::c_style | py::array::forcecast> P_values,
+        py::array_t<cuprox::Index, py::array::c_style | py::array::forcecast> A_row_offsets,
+        py::array_t<cuprox::Index, py::array::c_style | py::array::forcecast> A_col_indices,
+        py::array_t<double, py::array::c_style | py::array::forcecast> A_values,
+        py::array_t<double, py::array::c_style | py::array::forcecast> q,
+        py::array_t<double, py::array::c_style | py::array::forcecast> l,
+        py::array_t<double, py::array::c_style | py::array::forcecast> u,
+        cuprox::Index P_n,
+        cuprox::Index A_m,
+        cuprox::Index A_n,
+        int max_iters,
+        double eps_abs,
+        double eps_rel,
+        double rho,
+        bool verbose
+    ) {
+        // Get buffer info
+        auto P_ro = P_row_offsets.request();
+        auto P_ci = P_col_indices.request();
+        auto P_v = P_values.request();
+        auto A_ro = A_row_offsets.request();
+        auto A_ci = A_col_indices.request();
+        auto A_v = A_values.request();
+        auto q_buf = q.request();
+        auto l_buf = l.request();
+        auto u_buf = u.request();
+        
+        // Create QP problem
+        cuprox::QPProblem<double> qp;
+        qp.P = cuprox::CsrMatrix<double>::from_csr(
+            P_n, P_n, static_cast<cuprox::Index>(P_v.size),
+            static_cast<cuprox::Index*>(P_ro.ptr),
+            static_cast<cuprox::Index*>(P_ci.ptr),
+            static_cast<double*>(P_v.ptr)
+        );
+        qp.A = cuprox::CsrMatrix<double>::from_csr(
+            A_m, A_n, static_cast<cuprox::Index>(A_v.size),
+            static_cast<cuprox::Index*>(A_ro.ptr),
+            static_cast<cuprox::Index*>(A_ci.ptr),
+            static_cast<double*>(A_v.ptr)
+        );
+        
+        qp.q.resize(A_n);
+        qp.q.copy_from_host(static_cast<double*>(q_buf.ptr), A_n);
+        qp.l.resize(A_m);
+        qp.l.copy_from_host(static_cast<double*>(l_buf.ptr), A_m);
+        qp.u.resize(A_m);
+        qp.u.copy_from_host(static_cast<double*>(u_buf.ptr), A_m);
+        
+        // Configure solver
+        cuprox::AdmmSettings<double> settings;
+        settings.max_iters = max_iters;
+        settings.eps_abs = eps_abs;
+        settings.eps_rel = eps_rel;
+        settings.rho = rho;
+        settings.verbose = verbose;
+        
+        // Solve
+        cuprox::AdmmSolver<double> solver(settings);
+        auto result = solver.solve(qp);
+        
+        // Convert result
+        auto x_host = result.x.to_host();
+        auto y_host = result.y.to_host();
+        
+        py::array_t<double> x_out(x_host.size());
+        py::array_t<double> y_out(y_host.size());
+        
+        std::copy(x_host.begin(), x_host.end(), x_out.mutable_data());
+        std::copy(y_host.begin(), y_host.end(), y_out.mutable_data());
+        
+        py::dict out;
+        out["x"] = x_out;
+        out["y"] = y_out;
+        out["status"] = cuprox::status_to_string(result.status);
+        out["objective"] = result.primal_obj;
+        out["primal_residual"] = result.primal_res;
+        out["dual_residual"] = result.dual_res;
+        out["iterations"] = result.iterations;
+        out["solve_time"] = result.solve_time;
+        
+        return out;
+    },
+        py::arg("P_row_offsets"),
+        py::arg("P_col_indices"),
+        py::arg("P_values"),
+        py::arg("A_row_offsets"),
+        py::arg("A_col_indices"),
+        py::arg("A_values"),
+        py::arg("q"),
+        py::arg("l"),
+        py::arg("u"),
+        py::arg("P_n"),
+        py::arg("A_m"),
+        py::arg("A_n"),
+        py::arg("max_iters") = 4000,
+        py::arg("eps_abs") = 1e-6,
+        py::arg("eps_rel") = 1e-6,
+        py::arg("rho") = 1.0,
+        py::arg("verbose") = false,
+        "Solve QP using ADMM on GPU");
 
 #else
     m.attr("cuda_available") = false;
