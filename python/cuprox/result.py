@@ -18,20 +18,21 @@ class Status(Enum):
     
     Attributes:
         OPTIMAL: Solution found within tolerance
-        INFEASIBLE: Problem has no feasible solution
-        UNBOUNDED: Problem is unbounded (objective → -∞)
+        PRIMAL_INFEASIBLE: Problem has no feasible solution
+        DUAL_INFEASIBLE: Problem is unbounded (objective → -∞)
         MAX_ITERATIONS: Maximum iteration limit reached
         TIME_LIMIT: Time limit exceeded
         NUMERICAL_ERROR: Numerical issues encountered
         UNSOLVED: Problem not yet solved
     """
     OPTIMAL = "optimal"
-    INFEASIBLE = "infeasible"
-    UNBOUNDED = "unbounded"
+    PRIMAL_INFEASIBLE = "primal_infeasible"
+    DUAL_INFEASIBLE = "dual_infeasible"
     MAX_ITERATIONS = "max_iterations"
     TIME_LIMIT = "time_limit"
     NUMERICAL_ERROR = "numerical_error"
     UNSOLVED = "unsolved"
+    INVALID_INPUT = "invalid_input"
     
     def __str__(self) -> str:
         return self.value

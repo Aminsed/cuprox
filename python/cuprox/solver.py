@@ -332,61 +332,66 @@ def _solve_gpu(
     """Solve using GPU (C++ extension)."""
     from . import _core
     
+    if not _core.cuda_available:
+        # Fall back to CPU if CUDA not available
+        return _solve_cpu(c, A, b, lb, ub, P, constr_l, constr_u, params, warm_start)
+    
     # Prepare data for C++
     if HAS_SCIPY and sparse.isspmatrix_csr(A):
         A_data = A.data.astype(np.float64)
         A_indices = A.indices.astype(np.int32)
         A_indptr = A.indptr.astype(np.int32)
+        m, n = A.shape
     else:
         # Dense matrix - convert to CSR
         A_sparse = sparse.csr_matrix(A)
         A_data = A_sparse.data.astype(np.float64)
         A_indices = A_sparse.indices.astype(np.int32)
         A_indptr = A_sparse.indptr.astype(np.int32)
+        m, n = A_sparse.shape
+    
+    # Ensure contiguous arrays
+    c = np.ascontiguousarray(c, dtype=np.float64)
+    b = np.ascontiguousarray(b, dtype=np.float64)
+    lb = np.ascontiguousarray(lb, dtype=np.float64)
+    ub = np.ascontiguousarray(ub, dtype=np.float64)
+    
+    # Replace inf with large values
+    ub = np.where(np.isinf(ub), 1e20, ub)
+    lb = np.where(np.isinf(lb), -1e20, lb)
     
     # Call C++ solver
     if P is None:
-        # LP: uses constraint upper bounds (Ax <= b form)
-        raw_result = _core.solve_lp(
-            A_data=A_data,
-            A_indices=A_indices,
-            A_indptr=A_indptr,
-            b=constr_u,  # Use upper bounds for LP constraints
+        # LP: uses PDHG
+        raw_result = _core.solve_lp_pdhg(
+            row_offsets=A_indptr,
+            col_indices=A_indices,
+            values=A_data,
             c=c,
+            b=b,
             lb=lb,
             ub=ub,
-            params=params,
-            warm_x=warm_start.x if warm_start else None,
-            warm_y=warm_start.y if warm_start else None,
+            num_rows=m,
+            num_cols=n,
+            max_iters=params.get("max_iterations", 10000),
+            eps_abs=params.get("tolerance", 1e-6),
+            eps_rel=params.get("tolerance", 1e-6),
+            verbose=params.get("verbose", False),
+        )
+        
+        return SolveResult(
+            status=Status(raw_result["status"]),
+            objective=float(raw_result["objective"]),
+            x=raw_result["x"],
+            y=raw_result["y"],
+            iterations=raw_result["iterations"],
+            solve_time=raw_result["solve_time"],
+            primal_residual=raw_result.get("primal_residual", 0.0),
+            dual_residual=raw_result.get("dual_residual", 0.0),
         )
     else:
-        # QP: uses two-sided constraints l <= Ax <= u
-        if HAS_SCIPY and sparse.isspmatrix_csr(P):
-            P_data = P.data.astype(np.float64)
-            P_indices = P.indices.astype(np.int32)
-            P_indptr = P.indptr.astype(np.int32)
-        else:
-            P_sparse = sparse.csr_matrix(P)
-            P_data = P_sparse.data.astype(np.float64)
-            P_indices = P_sparse.indices.astype(np.int32)
-            P_indptr = P_sparse.indptr.astype(np.int32)
-        
-        raw_result = _core.solve_qp(
-            P_data=P_data,
-            P_indices=P_indices,
-            P_indptr=P_indptr,
-            A_data=A_data,
-            A_indices=A_indices,
-            A_indptr=A_indptr,
-            q=c,
-            l=constr_l,  # Constraint lower bounds
-            u=constr_u,  # Constraint upper bounds
-            params=params,
-            warm_x=warm_start.x if warm_start else None,
-            warm_y=warm_start.y if warm_start else None,
-        )
-    
-    return SolveResult.from_raw(raw_result)
+        # QP: not implemented yet, fall back to CPU
+        return _solve_cpu(c, A, b, lb, ub, P, constr_l, constr_u, params, warm_start)
 
 
 def _solve_cpu(

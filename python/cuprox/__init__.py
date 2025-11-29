@@ -34,9 +34,11 @@ __author__ = "cuProx Contributors"
 
 # Check for CUDA availability
 try:
-    from ._core import __cuda_available__
+    from . import _core
+    __cuda_available__ = _core.cuda_available
 except ImportError:
     # C++ extension not built yet
+    _core = None
     __cuda_available__ = False
 
 # Import public API
