@@ -21,18 +21,18 @@ Standard form:
                    s.t. W(ξ)y = h(ξ) - T(ξ)x, y ≥ 0
 
 >>> from cuprox.stochastic import TwoStageLP, ScenarioSet
->>> 
+>>>
 >>> # Define first stage
 >>> problem = TwoStageLP(
 ...     c=first_stage_cost,
 ...     A=first_stage_constraints,
 ...     b=first_stage_rhs,
 ... )
->>> 
+>>>
 >>> # Add scenarios for second stage
 >>> for prob, q, W, T, h in scenarios:
 ...     problem.add_scenario(prob, q=q, W=W, T=T, h=h)
->>> 
+>>>
 >>> result = problem.solve()
 
 Sample Average Approximation (SAA)
@@ -41,10 +41,10 @@ SAA replaces the expectation with a sample average, creating a deterministic
 equivalent that can be solved efficiently:
 
 >>> from cuprox.stochastic import SAASolver
->>> 
+>>>
 >>> solver = SAASolver(problem, n_samples=1000)
 >>> result = solver.solve()
->>> 
+>>>
 >>> # Statistical analysis
 >>> print(f"Optimality gap: {result.gap_estimate:.4f}")
 >>> print(f"95% CI: [{result.ci_lower:.4f}, {result.ci_upper:.4f}]")

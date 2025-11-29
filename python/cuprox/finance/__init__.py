@@ -10,24 +10,24 @@ optimization problems, leveraging cuProx's GPU-accelerated QP solver.
 Portfolio Optimization
 ----------------------
 >>> from cuprox.finance import Portfolio
->>> 
+>>>
 >>> # Mean-Variance (Markowitz) optimization
 >>> port = Portfolio(returns)
 >>> weights = port.optimize(method='mean_variance', risk_aversion=2.0)
->>> 
+>>>
 >>> # Minimum variance portfolio
 >>> weights = port.optimize(method='min_variance')
->>> 
+>>>
 >>> # Maximum Sharpe ratio
 >>> weights = port.optimize(method='max_sharpe')
->>> 
+>>>
 >>> # Risk parity
 >>> weights = port.optimize(method='risk_parity')
 
 Risk Metrics
 ------------
 >>> from cuprox.finance import RiskMetrics
->>> 
+>>>
 >>> risk = RiskMetrics(returns)
 >>> print(f"Volatility: {risk.volatility(weights):.2%}")
 >>> print(f"VaR (95%): {risk.var(weights, alpha=0.05):.2%}")
@@ -37,7 +37,7 @@ Risk Metrics
 Efficient Frontier
 ------------------
 >>> from cuprox.finance import EfficientFrontier
->>> 
+>>>
 >>> ef = EfficientFrontier(returns)
 >>> frontier = ef.compute(n_points=50)
 >>> ef.plot()

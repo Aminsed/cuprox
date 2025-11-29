@@ -22,7 +22,7 @@ For large-scale problems, use the matrix interface:
 >>> import cuprox
 >>> import numpy as np
 >>> from scipy import sparse
->>> 
+>>>
 >>> A = sparse.random(1000, 5000, density=0.01, format='csr')
 >>> b = np.random.rand(1000)
 >>> c = np.random.randn(5000)

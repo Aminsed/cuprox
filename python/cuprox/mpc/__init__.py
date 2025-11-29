@@ -10,12 +10,12 @@ ideal for real-time control of robots, vehicles, and industrial processes.
 Quick Start
 -----------
 >>> from cuprox.mpc import LinearMPC, LinearSystem
->>> 
+>>>
 >>> # Define system dynamics: x_{k+1} = A @ x_k + B @ u_k
 >>> A = np.array([[1, 0.1], [0, 1]])  # Double integrator
 >>> B = np.array([[0.005], [0.1]])
 >>> system = LinearSystem(A, B)
->>> 
+>>>
 >>> # Create MPC controller
 >>> mpc = LinearMPC(
 ...     system,
@@ -24,7 +24,7 @@ Quick Start
 ...     R=np.array([[0.1]]),   # Input cost
 ...     u_min=-1.0, u_max=1.0  # Input constraints
 ... )
->>> 
+>>>
 >>> # Compute control action
 >>> x0 = np.array([1.0, 0.5])  # Current state
 >>> result = mpc.solve(x0)
@@ -33,7 +33,7 @@ Quick Start
 Reference Tracking
 ------------------
 >>> from cuprox.mpc import TrackingMPC
->>> 
+>>>
 >>> # Track a reference trajectory
 >>> mpc = TrackingMPC(system, horizon=20, Q=Q, R=R)
 >>> result = mpc.solve(x0, x_ref=target_trajectory)
