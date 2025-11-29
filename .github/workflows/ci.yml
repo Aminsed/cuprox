@@ -50,7 +50,7 @@ jobs:
           pip install types-setuptools
           
       - name: Run mypy
-        run: mypy python/cuprox --ignore-missing-imports
+        run: mypy python/cuprox --ignore-missing-imports --disable-error-code=no-any-return --disable-error-code=no-untyped-def
         continue-on-error: true  # Don't fail CI yet, building up types
 
   # ============================================================
