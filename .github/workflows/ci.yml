@@ -130,27 +130,27 @@ jobs:
 
   # ============================================================
   # GPU Tests - requires self-hosted runner with GPU
+  # Disabled by default - uncomment and set up self-hosted runner
   # ============================================================
-  test-gpu:
-    name: Test (GPU)
-    runs-on: [self-hosted, gpu]
-    needs: [lint]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    continue-on-error: true  # Don't fail if no GPU runner
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Check CUDA
-        run: nvidia-smi
-        
-      - name: Install dependencies
-        run: |
-          pip install numpy scipy pytest
-          pip install -e .
-          
-      - name: Run all tests
-        run: pytest tests/python -v --tb=short
+  # test-gpu:
+  #   name: Test (GPU)
+  #   runs-on: [self-hosted, gpu]
+  #   needs: [lint]
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  #   
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     
+  #     - name: Check CUDA
+  #       run: nvidia-smi
+  #       
+  #     - name: Install dependencies
+  #       run: |
+  #         pip install numpy scipy pytest
+  #         pip install -e .
+  #         
+  #     - name: Run all tests
+  #       run: pytest tests/python -v --tb=short
 
   # ============================================================
   # Summary job for branch protection
