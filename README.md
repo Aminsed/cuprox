@@ -24,27 +24,17 @@
 
 cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and **convex Quadratic Programs (QP)**. It uses first-order proximal methods (PDHG, ADMM) that are perfectly suited for GPU parallelization.
 
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| ⚡ **Fast** | 10-100x speedup over CPU solvers on large problems |
-| 🎯 **Focused** | LP and QP only — does one thing exceptionally well |
-| 📦 **Easy Install** | `pip install cuprox` — just works |
-| 🔄 **Batch Solving** | Solve 1000s of problems in parallel (unique!) |
-| 🧠 **ML-Ready** | PyTorch integration for differentiable optimization |
-| 💻 **Fallback** | Automatic CPU fallback if no GPU available |
 
 ### When to Use cuProx
 
-✅ **Use cuProx for:**
+**Use cuProx for:**
 - Large-scale LP/QP (100K+ variables)
 - Batch solving (many small problems)
 - Real-time optimization (MPC, trading)
 - ML training with optimization layers
 - Moderate accuracy requirements (1e-4 to 1e-6)
 
-❌ **Don't use cuProx for:**
+**Don't use cuProx for:**
 - Mixed-integer programming (use Gurobi, HiGHS)
 - Very high precision (1e-10+, use interior-point)
 - Small single problems (GPU overhead)
@@ -295,11 +285,6 @@ class SolveResult:
 - [x] LP solver (PDHG)
 - [x] QP solver (ADMM)
 - [x] Batch solving
-- [x] CPU fallback
-- [ ] PyTorch autograd integration
-- [ ] Windows wheels
-- [ ] Multi-GPU support
-- [ ] SOCP extension
 
 ---
 
@@ -309,7 +294,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 # Development setup
-git clone https://github.com/yourusername/cuprox.git
+git clone https://github.com/Aminsed/cuprox.git
 cd cuprox
 pip install -e ".[dev]"
 pytest tests/
@@ -324,8 +309,8 @@ If you use cuProx in your research, please cite:
 ```bibtex
 @software{cuprox2024,
   title = {cuProx: GPU-Accelerated First-Order LP/QP Solver},
-  year = {2024},
-  url = {https://github.com/yourusername/cuprox}
+  year = {2025},
+  url = {https://github.com/Aminsed/cuprox}
 }
 ```
 
@@ -341,9 +326,9 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 **Built with ❤️ for the optimization community**
 
-[Report Bug](https://github.com/yourusername/cuprox/issues) •
-[Request Feature](https://github.com/yourusername/cuprox/issues) •
-[Discussions](https://github.com/yourusername/cuprox/discussions)
+[Report Bug](https://github.com/Aminsed/cuprox/issues) •
+[Request Feature](https://github.com/Aminsed/cuprox/issues) •
+[Discussions](https://github.com/Aminsed/cuprox/discussions)
 
 </div>
 
