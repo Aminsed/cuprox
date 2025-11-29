@@ -59,14 +59,14 @@ See Also
 - Black & Litterman (1992): "Global Portfolio Optimization"
 """
 
+from .frontier import EfficientFrontier
 from .portfolio import Portfolio, PortfolioResult
 from .risk import RiskMetrics, RiskResult
-from .frontier import EfficientFrontier
 from .utils import (
-    compute_returns,
-    compute_covariance,
     annualize_returns,
     annualize_volatility,
+    compute_covariance,
+    compute_returns,
 )
 
 __all__ = [
@@ -82,4 +82,3 @@ __all__ = [
     "annualize_returns",
     "annualize_volatility",
 ]
-

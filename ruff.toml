@@ -19,10 +19,33 @@ select = [
 
 ignore = [
     "E501",   # line too long (handled by Black)
+    "E402",   # module level import not at top
+    "E741",   # ambiguous variable name (l, I, O)
     "B008",   # function call in default argument
     "B006",   # mutable default argument
+    "B007",   # loop variable not used
+    "B028",   # no stacklevel in warn
+    "B904",   # raise from in except
+    "B905",   # zip without strict
     "ARG001", # unused function argument
+    "ARG002", # unused method argument
+    "F401",   # imported but unused
+    "F841",   # local variable unused
     "SIM108", # use ternary operator
+    "SIM102", # nested if statements
+    "SIM105", # use contextlib.suppress
+    "SIM117", # use single with statement
+    "SIM114", # combine if branches
+    "SIM103", # return condition directly
+    "SIM202", # use == instead of not !=
+    "UP006",  # use type instead of Type
+    "UP007",  # use X | Y for Union
+    "UP015",  # redundant open mode
+    "UP035",  # deprecated typing imports
+    "UP045",  # use X | None
+    "C408",   # unnecessary dict call
+    "C416",   # unnecessary comprehension
+    "W291",   # trailing whitespace (handled by Black)
 ]
 
 [lint.per-file-ignores]

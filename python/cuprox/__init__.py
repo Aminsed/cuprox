@@ -35,6 +35,7 @@ __author__ = "cuProx Contributors"
 # Check for CUDA availability
 try:
     from . import _core
+
     __cuda_available__ = _core.cuda_available
 except ImportError:
     # C++ extension not built yet
@@ -42,39 +43,35 @@ except ImportError:
     __cuda_available__ = False
 
 # Import public API
-from .model import Model, Variable, Constraint, LinearExpr
-from .solver import solve, solve_batch
-from .result import SolveResult, Status
 from .exceptions import (
     CuproxError,
+    DeviceError,
+    DimensionError,
     InfeasibleError,
-    UnboundedError,
+    InvalidInputError,
     NumericalError,
     TimeoutError,
-    DimensionError,
-    InvalidInputError,
-    DeviceError,
+    UnboundedError,
 )
+from .model import Constraint, LinearExpr, Model, Variable
+from .result import SolveResult, Status
+from .solver import solve, solve_batch
 
 __all__ = [
     # Version
     "__version__",
     "__cuda_available__",
-    
     # Model building
     "Model",
     "Variable",
     "Constraint",
     "LinearExpr",
-    
     # Solving
     "solve",
     "solve_batch",
-    
     # Results
     "SolveResult",
     "Status",
-    
     # Exceptions
     "CuproxError",
     "InfeasibleError",
@@ -89,6 +86,7 @@ __all__ = [
 # PyTorch integration (optional - only if torch is installed)
 try:
     from . import torch as torch_module
+
     __all__.append("torch")
 except ImportError:
     pass  # torch not available
@@ -97,23 +95,23 @@ except ImportError:
 def info() -> str:
     """Return information about the cuProx installation."""
     import platform
-    
+
     lines = [
         f"cuProx version: {__version__}",
         f"Python version: {platform.python_version()}",
         f"Platform: {platform.platform()}",
         f"CUDA available: {__cuda_available__}",
     ]
-    
+
     if __cuda_available__:
         try:
             from ._core import get_device_info
+
             device_info = get_device_info()
             lines.append(f"GPU: {device_info['name']}")
             lines.append(f"CUDA version: {device_info['cuda_version']}")
             lines.append(f"Memory: {device_info['memory_gb']:.1f} GB")
         except Exception:
             pass
-    
-    return "\n".join(lines)
 
+    return "\n".join(lines)

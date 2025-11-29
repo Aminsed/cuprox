@@ -62,8 +62,8 @@ See Also
 - Agrawal et al. (2019): "Differentiable Convex Optimization Layers"
 """
 
-from .layers import QPLayer, LPLayer
-from .functions import solve_qp, solve_lp, QPFunction, LPFunction
+from .functions import LPFunction, QPFunction, solve_lp, solve_qp
+from .layers import LPLayer, QPLayer
 
 __all__ = [
     # nn.Module layers

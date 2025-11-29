@@ -68,23 +68,23 @@ See Also
 - Borrelli, Bemporad & Morari (2017): "Predictive Control"
 """
 
+from .constraints import BoxConstraints, PolytopeConstraints
+from .controller import LinearMPC, MPCResult, TrackingMPC
 from .dynamics import (
-    LinearSystem,
     AffineSystem,
+    LinearSystem,
+    cart_pole,
     double_integrator,
     double_integrator_2d,
-    cart_pole,
 )
-from .controller import LinearMPC, TrackingMPC, MPCResult
-from .constraints import BoxConstraints, PolytopeConstraints
 from .trajectory import (
     Trajectory,
+    circular_reference,
     constant_reference,
-    step_reference,
+    figure_eight_reference,
     ramp_reference,
     sinusoidal_reference,
-    circular_reference,
-    figure_eight_reference,
+    step_reference,
 )
 
 __all__ = [
@@ -110,4 +110,3 @@ __all__ = [
     "circular_reference",
     "figure_eight_reference",
 ]
-
