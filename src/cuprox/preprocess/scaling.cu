@@ -275,23 +275,31 @@ void unscale_solution(
     Index n = x.size();
     Index m = y.size();
     
-    // x = E * x_scaled * b_scale
+    // Scaled problem: min c̃'x̃ s.t. Ãx̃ = b̃
+    // where: Ã = D*A*E, c̃ = c_scale*E*c, b̃ = b_scale*D*b
+    // Variable transform: x̃ = E⁻¹*x, so x = E*x̃
+    // But we also normalized b, so we need: x = E * x̃ / b_scale
+    
+    // x_orig = E * x_scaled / b_scale
+    T b_scale_inv = (scaling.b_scale > T(1e-10)) ? T(1) / scaling.b_scale : T(1);
     int num_blocks_n = (n + kBlockSize - 1) / kBlockSize;
     kernels::multiply_vectors_kernel<<<num_blocks_n, kBlockSize>>>(
         x.data(), scaling.E.data(), n
     );
     kernels::scale_vector_kernel<<<num_blocks_n, kBlockSize>>>(
-        x.data(), scaling.b_scale, n
+        x.data(), b_scale_inv, n
     );
     CUPROX_CUDA_CHECK_LAST();
     
-    // y = D * y_scaled * c_scale
+    // y_orig = D * y_scaled / c_scale  
+    // (dual scaling: y transforms inversely to primal objective scaling)
+    T c_scale_inv = (scaling.c_scale > T(1e-10)) ? T(1) / scaling.c_scale : T(1);
     int num_blocks_m = (m + kBlockSize - 1) / kBlockSize;
     kernels::multiply_vectors_kernel<<<num_blocks_m, kBlockSize>>>(
         y.data(), scaling.D.data(), m
     );
     kernels::scale_vector_kernel<<<num_blocks_m, kBlockSize>>>(
-        y.data(), scaling.c_scale, m
+        y.data(), c_scale_inv, m
     );
     CUPROX_CUDA_CHECK_LAST();
 }

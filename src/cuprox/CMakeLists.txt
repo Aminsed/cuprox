@@ -21,6 +21,7 @@ if(CUPROX_HAS_CUDA)
         preprocess/scaling.cuh
         solvers/pdhg.cuh
         solvers/admm.cuh
+        solvers/batch_pdhg.cuh
     )
     
     set(CUPROX_CUDA_SOURCES
@@ -29,6 +30,7 @@ if(CUPROX_HAS_CUDA)
         preprocess/scaling.cu
         solvers/pdhg.cu
         solvers/admm.cu
+        solvers/batch_pdhg.cu
     )
     
     add_library(cuprox_core STATIC

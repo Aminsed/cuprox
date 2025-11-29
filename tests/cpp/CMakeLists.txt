@@ -51,4 +51,12 @@ if(CUPROX_HAS_CUDA)
         GTest::gtest_main
     )
     gtest_discover_tests(test_admm)
+    
+    # Scaling tests
+    add_executable(test_scaling test_scaling.cpp)
+    target_link_libraries(test_scaling PRIVATE
+        cuprox::core
+        GTest::gtest_main
+    )
+    gtest_discover_tests(test_scaling)
 endif()
