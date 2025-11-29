@@ -68,14 +68,23 @@ See Also
 - Borrelli, Bemporad & Morari (2017): "Predictive Control"
 """
 
-from .dynamics import LinearSystem, AffineSystem
+from .dynamics import (
+    LinearSystem,
+    AffineSystem,
+    double_integrator,
+    double_integrator_2d,
+    cart_pole,
+)
 from .controller import LinearMPC, TrackingMPC, MPCResult
 from .constraints import BoxConstraints, PolytopeConstraints
 from .trajectory import (
     Trajectory,
     constant_reference,
     step_reference,
+    ramp_reference,
     sinusoidal_reference,
+    circular_reference,
+    figure_eight_reference,
 )
 
 __all__ = [
@@ -86,6 +95,9 @@ __all__ = [
     # Dynamics
     "LinearSystem",
     "AffineSystem",
+    "double_integrator",
+    "double_integrator_2d",
+    "cart_pole",
     # Constraints
     "BoxConstraints",
     "PolytopeConstraints",
@@ -93,6 +105,9 @@ __all__ = [
     "Trajectory",
     "constant_reference",
     "step_reference",
+    "ramp_reference",
     "sinusoidal_reference",
+    "circular_reference",
+    "figure_eight_reference",
 ]
 
