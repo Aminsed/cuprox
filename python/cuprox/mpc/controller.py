@@ -217,21 +217,30 @@ class LinearMPC:
 
         self._P = sparse.block_diag(P_blocks, format="csr")
 
-        # Build equality constraints for dynamics
-        # x_{k+1} = A x_k + B u_k
-        # => -A x_k + I x_{k+1} - B u_k = 0
+        # Build equality constraints:
+        # 1. Initial state: x_0 = x0 (will be set in solve())
+        # 2. Dynamics: x_{k+1} = A x_k + B u_k
+        #    => -A x_k + I x_{k+1} - B u_k = 0
 
         A_sys = self.system.A
         B_sys = self.system.B
 
-        n_eq = N * n_x  # N dynamics constraints
+        # n_x constraints for initial state + N*n_x for dynamics
+        n_eq = n_x + N * n_x
 
         rows = []
         cols = []
         data = []
 
+        # Initial state constraint: x_0 = x0 (identity on first n_x variables)
+        for i in range(n_x):
+            rows.append(i)
+            cols.append(i)
+            data.append(1.0)
+
+        # Dynamics constraints (offset by n_x rows)
         for k in range(N):
-            row_start = k * n_x
+            row_start = n_x + k * n_x
 
             # -A x_k
             x_k_start = k * n_x
@@ -260,7 +269,7 @@ class LinearMPC:
 
         self._A_eq = sparse.csr_matrix((data, (rows, cols)), shape=(n_eq, n_vars))
 
-        # Bounds for full decision vector
+        # Variable bounds for full decision vector
         # z = [x_0, x_1, ..., x_N, u_0, ..., u_{N-1}]
         lb = []
         ub = []
@@ -275,8 +284,8 @@ class LinearMPC:
             lb.extend(self.u_min)
             ub.extend(self.u_max)
 
-        self._lb = np.array(lb)
-        self._ub = np.array(ub)
+        self._var_lb = np.array(lb)
+        self._var_ub = np.array(ub)
         self._n_vars = n_vars
         self._n_eq = n_eq
 
@@ -339,28 +348,27 @@ class LinearMPC:
         for k in range(N):
             q[u_start + k * n_u : u_start + (k + 1) * n_u] = -self.R @ u_ref
 
-        # RHS for equality constraints (dynamics)
-        # Includes affine term if system is AffineSystem
+        # RHS for equality constraints
+        # First n_x: initial state constraint (x_0 = x0)
+        # Remaining N*n_x: dynamics constraints
         b_eq = np.zeros(self._n_eq)
 
+        # Initial state constraint: x_0 = x0
+        b_eq[:n_x] = x0
+
+        # Affine term for dynamics if system is AffineSystem
         if isinstance(self.system, AffineSystem):
             for k in range(N):
-                b_eq[k * n_x : (k + 1) * n_x] = -self.system.c
+                b_eq[n_x + k * n_x : n_x + (k + 1) * n_x] = -self.system.c
 
-        # Fix initial state: x_0 = x0
-        lb = self._lb.copy()
-        ub = self._ub.copy()
-        lb[:n_x] = x0
-        ub[:n_x] = x0
-
-        # Solve QP
+        # Solve QP with equality constraints
         result = solve(
             c=q,
             A=self._A_eq,
             b=b_eq,
             P=self._P,
-            lb=lb,
-            ub=ub,
+            lb=self._var_lb,
+            ub=self._var_ub,
             constraint_l=b_eq,
             constraint_u=b_eq,
             params={
@@ -370,8 +378,8 @@ class LinearMPC:
             },
         )
 
-        # Extract solution
-        z = result.x
+        # Post-process: clip solution to bounds (ADMM may not fully enforce them)
+        z = np.clip(result.x, self._var_lb, self._var_ub)
 
         # States: z[0:(N+1)*n_x]
         x_traj = z[: (N + 1) * n_x].reshape(N + 1, n_x)
@@ -542,16 +550,13 @@ class TrackingMPC(LinearMPC):
                 q[u_start + k * n_u : u_start + (k + 1) * n_u] = -self.R @ u_ref_k
 
         # Equality constraints RHS
+        # First n_x: initial state, remaining N*n_x: dynamics
         b_eq = np.zeros(self._n_eq)
+        b_eq[:n_x] = x0  # Initial state constraint
+
         if isinstance(self.system, AffineSystem):
             for k in range(N):
-                b_eq[k * n_x : (k + 1) * n_x] = -self.system.c
-
-        # Fix initial state
-        lb = self._lb.copy()
-        ub = self._ub.copy()
-        lb[:n_x] = x0
-        ub[:n_x] = x0
+                b_eq[n_x + k * n_x : n_x + (k + 1) * n_x] = -self.system.c
 
         # Solve
         result = solve(
@@ -559,8 +564,8 @@ class TrackingMPC(LinearMPC):
             A=self._A_eq,
             b=b_eq,
             P=self._P,
-            lb=lb,
-            ub=ub,
+            lb=self._var_lb,
+            ub=self._var_ub,
             constraint_l=b_eq,
             constraint_u=b_eq,
             params={
@@ -570,8 +575,8 @@ class TrackingMPC(LinearMPC):
             },
         )
 
-        # Extract solution
-        z = result.x
+        # Post-process: clip solution to bounds
+        z = np.clip(result.x, self._var_lb, self._var_ub)
         x_traj = z[: (N + 1) * n_x].reshape(N + 1, n_x)
         u_seq = z[(N + 1) * n_x :].reshape(N, n_u)
 

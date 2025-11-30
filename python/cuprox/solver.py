@@ -410,14 +410,10 @@ def _solve_gpu(
         P_indptr = np.ascontiguousarray(P_indptr)
 
         # For QP, use l and u from constraint conversion
-        # If no explicit constraint_senses given with b=0, use free bounds
-        if np.allclose(constr_l, constr_u) and np.allclose(constr_u, 0):
-            # No meaningful constraints - use large bounds
-            qp_l = np.full(m, -1e20, dtype=np.float64)
-            qp_u = np.full(m, 1e20, dtype=np.float64)
-        else:
-            qp_l = np.ascontiguousarray(constr_l, dtype=np.float64)
-            qp_u = np.ascontiguousarray(constr_u, dtype=np.float64)
+        # Note: When constr_l = constr_u, this represents equality constraints (Ax = b)
+        # We must NOT remove these even when b = 0
+        qp_l = np.ascontiguousarray(constr_l, dtype=np.float64)
+        qp_u = np.ascontiguousarray(constr_u, dtype=np.float64)
 
         # Replace inf with large values
         qp_l = np.where(np.isinf(qp_l), -1e20, qp_l)
