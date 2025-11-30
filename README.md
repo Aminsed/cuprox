@@ -4,7 +4,7 @@
 
 **GPU-Accelerated First-Order LP/QP Solver**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Dual%20(Free%2FCommercial)-orange.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![CUDA 11.4+](https://img.shields.io/badge/CUDA-11.4+-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 
@@ -271,7 +271,7 @@ Unlike interior-point methods (which require Cholesky factorization — poorly p
 | LP support | Yes | Yes | Yes | No | Yes |
 | QP support | Yes | Yes | No | Yes | Yes |
 | MIP support | No | Yes | Yes | No | No |
-| Open source | Yes (MIT) | No | Yes | Yes | Yes |
+| Open source | Dual License | No | Yes | Yes | Yes |
 
 ---
 
@@ -365,7 +365,12 @@ If you use cuProx in your research, please cite:
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+**Dual License: Non-Commercial Free / Commercial Paid**
+
+- ✅ **Free** for personal, academic, research, and non-profit use
+- 💼 **Commercial License required** for business/commercial use
+
+See [LICENSE](LICENSE) for full details. Contact us for commercial licensing.
 
 ---
 

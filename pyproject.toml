@@ -19,7 +19,7 @@ name = "cuprox"
 version = "0.1.0"
 description = "GPU-accelerated LP/QP optimization solver using first-order proximal methods"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Dual License: Non-Commercial Free / Commercial Paid"}
 authors = [
     {name = "cuProx Contributors"}
 ]
@@ -39,7 +39,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
