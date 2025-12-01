@@ -49,9 +49,9 @@ pip install --upgrade pip numpy scipy
 
 **CUDA Toolkit (if building with GPU support):**
 
-```bash
+   ```bash
 # Check if CUDA is already installed
-nvcc --version
+   nvcc --version
 
 # If not, install CUDA Toolkit from NVIDIA:
 # https://developer.nvidia.com/cuda-downloads
@@ -221,13 +221,13 @@ print(f"CUDA available: {cuprox.__cuda_available__}")
 # Run a simple test
 n, m = 100, 50
 A = sparse.random(m, n, density=0.1, format='csr')
-b = np.random.rand(m)
-c = np.random.randn(n)
+    b = np.random.rand(m)
+    c = np.random.randn(n)
+    
+    result = cuprox.solve(c=c, A=A, b=b, lb=np.zeros(n))
 
-result = cuprox.solve(c=c, A=A, b=b, lb=np.zeros(n))
-
-print(f"Status: {result.status}")
-print(f"Solve time: {result.solve_time:.4f}s")
+    print(f"Status: {result.status}")
+    print(f"Solve time: {result.solve_time:.4f}s")
 print(f"Iterations: {result.iterations}")
 
 if result.status == "optimal":
