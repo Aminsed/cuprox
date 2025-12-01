@@ -4,83 +4,72 @@
 
 **GPU-Accelerated First-Order LP/QP Solver**
 
-[![License](https://img.shields.io/badge/License-Dual%20(Free%2FCommercial)-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Dual%20(Non--Commercial%2FCommercial)-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![CUDA 11.4+](https://img.shields.io/badge/CUDA-11.4+-green.svg)](https://developer.nvidia.com/cuda-toolkit)
+[![CUDA 11.4+](https://img.shields.io/badge/CUDA-11.4+-76B900.svg)](https://developer.nvidia.com/cuda-toolkit)
 
-*Solve large-scale Linear Programs and Quadratic Programs 10-100x faster on GPU*
+A high-performance optimization library for Linear Programs and Quadratic Programs,  
+leveraging GPU parallelism through first-order methods (PDHG, ADMM).
 
-[Installation](#installation) •
-[Quick Start](#quick-start) •
-[Documentation](#documentation) •
-[Benchmarks](#benchmarks) •
-[Contributing](#contributing)
+[Installation](#installation) | [Examples](#examples) | [Benchmarks](#benchmarks) | [API Reference](#api-reference) | [License](#license)
 
 </div>
 
 ---
 
-## What is cuProx?
+## Overview
 
-cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and **convex Quadratic Programs (QP)**. It uses first-order proximal methods (PDHG, ADMM) that are perfectly suited for GPU parallelization.
+cuProx solves large-scale **Linear Programs (LP)** and convex **Quadratic Programs (QP)** using first-order proximal algorithms optimized for GPU execution. The solver achieves significant speedups on problems where traditional interior-point methods become computationally expensive.
 
-### Key Features
+### Capabilities
 
-| Feature | Description |
-|---------|-------------|
-| **Fast** | 10-100x speedup over CPU solvers on large problems |
-| **Focused** | LP and QP only — does one thing exceptionally well |
-| **Batch Solving** | Solve 1000s of problems in parallel (unique capability) |
-| **ML-Ready** | PyTorch integration for differentiable optimization |
-| **Fallback** | Automatic CPU fallback if no GPU available |
+| Category | Description |
+|----------|-------------|
+| **Problem Types** | Linear Programs, Convex Quadratic Programs |
+| **Scale** | Tested up to 1M variables, 500K constraints |
+| **Batch Solving** | Solve thousands of independent problems in parallel |
+| **Hardware** | NVIDIA GPUs (CUDA 11.4+), CPU fallback available |
+| **Precision** | float32 (faster) or float64 (higher accuracy) |
 
-### When to Use cuProx
+### Target Applications
 
-**Use cuProx for:**
-- Large-scale LP/QP (100K+ variables)
-- Batch solving (many small problems)
-- Real-time optimization (MPC, trading)
-- ML training with optimization layers
-- Moderate accuracy requirements (1e-4 to 1e-6)
-
-**Not recommended for:**
-- Mixed-integer programming (use Gurobi, HiGHS)
-- Very high precision (1e-10+, use interior-point)
-- Small single problems (GPU overhead)
-- Non-convex optimization
+- **Quantitative Finance**: Portfolio optimization, risk management, trading systems
+- **Control Systems**: Model Predictive Control, trajectory optimization
+- **Operations Research**: Resource allocation, scheduling, logistics
+- **Machine Learning**: Optimization layers in neural networks, differentiable optimization
 
 ---
 
 ## Installation
 
-cuProx is built from source to ensure optimal performance for your specific hardware. See [INSTALL.md](INSTALL.md) for detailed instructions.
+cuProx is distributed as source code and built locally to ensure optimal performance for your hardware configuration.
 
-### Quick Start (GPU Build)
+### Prerequisites
 
-**Prerequisites:**
-- CUDA Toolkit 11.4+
-- CMake 3.24+
 - Python 3.9+
-- C++ compiler (GCC 7+ or Clang)
+- CUDA Toolkit 11.4+ (for GPU acceleration)
+- CMake 3.24+
+- C++ compiler with C++17 support
+
+### Build from Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/Aminsed/cuprox.git
 cd cuprox
 
-# Build the C++ library and Python bindings
+# Build C++ library with CUDA support
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 
-# Install the Python package (from project root)
+# Install Python package
 cd ..
 pip install -e python/
 ```
 
-### Quick Start (CPU Only)
+### CPU-Only Installation
 
-For development or systems without CUDA:
+For systems without NVIDIA GPUs:
 
 ```bash
 git clone https://github.com/Aminsed/cuprox.git
@@ -92,208 +81,192 @@ pip install -e python/
 
 ```python
 import cuprox
-print(f"cuProx version: {cuprox.__version__}")
-print(f"CUDA available: {cuprox.__cuda_available__}")  # True = GPU ready!
+print(f"Version: {cuprox.__version__}")
+print(f"CUDA available: {cuprox.__cuda_available__}")
 ```
 
-For comprehensive installation instructions including troubleshooting, see [INSTALL.md](INSTALL.md).
+See [INSTALL.md](INSTALL.md) for detailed installation instructions and troubleshooting.
 
 ---
 
-## Quick Start
+## Examples
 
-### Example 1: Simple LP
+### Portfolio Optimization
 
-```python
-import cuprox
-
-# Create model
-model = cuprox.Model()
-
-# Add variables (x, y >= 0)
-x = model.add_var(lb=0, name="x")
-y = model.add_var(lb=0, name="y")
-
-# Add constraints
-model.add_constr(x + 2*y <= 20)
-model.add_constr(3*x + y <= 30)
-
-# Minimize objective
-model.minimize(-5*x - 4*y)
-
-# Solve
-result = model.solve()
-
-print(f"Status: {result.status}")
-print(f"Optimal objective: {result.objective:.2f}")
-print(f"x = {result.get_value(x):.2f}")
-print(f"y = {result.get_value(y):.2f}")
-```
-
-### Example 2: Large-Scale LP (Matrix Form)
+Mean-variance portfolio optimization with GPU acceleration:
 
 ```python
-import cuprox
 import numpy as np
-from scipy import sparse
-
-# Problem: 100K variables, 50K constraints
-n, m = 100_000, 50_000
-
-# Random sparse problem
-A = sparse.random(m, n, density=0.001, format='csr')
-b = np.random.rand(m)
-c = np.random.randn(n)
-
-# Solve
-result = cuprox.solve(c=c, A=A, b=b, lb=np.zeros(n))
-
-print(f"Solved in {result.solve_time:.3f} seconds")
-print(f"Iterations: {result.iterations}")
-```
-
-### Example 3: Batch Solving (1000 LPs in Parallel)
-
-```python
 import cuprox
-import numpy as np
 
-# Generate 1000 small LP problems
-problems = []
-for i in range(1000):
-    n, m = 100, 50
-    problems.append({
-        "c": np.random.randn(n),
-        "A": sparse.random(m, n, density=0.1, format='csr'),
-        "b": np.random.rand(m),
-        "lb": np.zeros(n),
-    })
+n_assets = 500
+returns = np.random.randn(252, n_assets) * 0.02
+mu = returns.mean(axis=0)
+Sigma = np.cov(returns.T)
 
-# Solve ALL in parallel on GPU
-results = cuprox.solve_batch(problems)
+# Solve: min (1/2) w' Sigma w - risk_aversion * mu' w
+# subject to: sum(w) = 1, w >= 0
+result = cuprox.solve(
+    c=-mu,
+    P=Sigma,
+    A=np.ones((1, n_assets)),
+    b=np.array([1.0]),
+    constraint_senses=['='],
+    lb=np.zeros(n_assets),
+    ub=np.ones(n_assets)
+)
 
-# All 1000 solved in ~100ms (vs ~10s sequential)
-print(f"Solved {len(results)} problems")
-print(f"All optimal: {all(r.status == 'optimal' for r in results)}")
+weights = result.x
+print(f"Expected return: {mu @ weights:.2%}")
+print(f"Portfolio volatility: {np.sqrt(weights @ Sigma @ weights):.2%}")
 ```
 
-### Example 4: Quadratic Program (Portfolio Optimization)
+<div align="center">
+<img src="examples/portfolio_frontier.png" alt="Efficient Frontier" width="700"/>
+<p><em>Efficient frontier computation with tangency and minimum variance portfolios</em></p>
+</div>
+
+### Model Predictive Control
+
+Real-time trajectory optimization for control systems:
 
 ```python
+import numpy as np
 import cuprox
-import numpy as np
 
-# Markowitz portfolio optimization
-# minimize (1/2) x' Σ x - μ' x
-# subject to: sum(x) = 1, x >= 0
+# Double integrator dynamics
+dt = 0.1
+A = np.array([[1, dt], [0, 1]])
+B = np.array([[0.5*dt**2], [dt]])
 
-n_assets = 1000
-mu = np.random.rand(n_assets)  # Expected returns
-Sigma = np.random.rand(n_assets, n_assets)
-Sigma = Sigma @ Sigma.T + np.eye(n_assets)  # Covariance (PSD)
+# MPC horizon
+N = 20
+n_states, n_controls = 2, 1
 
-model = cuprox.Model()
-x = model.add_vars(n_assets, lb=0, name="weight")
-
-# Quadratic objective
-model.minimize(0.5 * x @ Sigma @ x - mu @ x)
-
-# Budget constraint
-model.add_constr(sum(x) == 1)
-
-result = model.solve()
-print(f"Portfolio variance: {result.objective:.4f}")
+# Build and solve QP at each timestep
+# ... (see examples/03_model_predictive_control.ipynb)
 ```
 
----
+<div align="center">
+<img src="examples/mpc_regulation.png" alt="MPC Control" width="700"/>
+<p><em>Model Predictive Control: state regulation with receding horizon</em></p>
+</div>
 
-## Solver Parameters
+### Stochastic Programming
+
+Decision-making under uncertainty:
 
 ```python
-result = model.solve(params={
-    # Convergence
-    "tolerance": 1e-6,        # Primal/dual residual tolerance
-    "max_iterations": 100000, # Maximum iterations
-    "time_limit": 3600.0,     # Time limit in seconds
-    
-    # Algorithm
-    "scaling": "ruiz",        # "ruiz", "geometric", or "none"
-    "restart": "adaptive",    # "adaptive", "fixed", or "none"
-    
-    # Precision
-    "precision": "float64",   # "float32" (faster) or "float64" (accurate)
-    
-    # Device
-    "device": "auto",         # "auto", "gpu", or "cpu"
-    "verbose": True,          # Print iteration log
-})
+import numpy as np
+import cuprox
+
+# Energy portfolio: thermal generation + uncertain renewables
+n_scenarios = 500
+thermal_cost, spot_buy, spot_sell = 50, 80, 30
+
+# Generate scenarios for solar, wind, demand
+solar = np.random.beta(2, 3, n_scenarios) * 300
+wind = np.random.beta(1.5, 2.5, n_scenarios) * 200
+demand = 600 + np.random.randn(n_scenarios) * 100
+
+# Solve stochastic program
+# ... (see examples/04_stochastic_programming.ipynb)
 ```
+
+<div align="center">
+<img src="examples/stochastic_energy.png" alt="Stochastic Optimization" width="700"/>
+<p><em>Energy portfolio optimization under renewable generation uncertainty</em></p>
+</div>
+
+### Additional Examples
+
+The `examples/` directory contains Jupyter notebooks demonstrating:
+
+| Notebook | Description |
+|----------|-------------|
+| [01_pytorch_differentiable_optimization.ipynb](examples/01_pytorch_differentiable_optimization.ipynb) | Differentiable optimization layers, decision-focused learning |
+| [02_portfolio_optimization.ipynb](examples/02_portfolio_optimization.ipynb) | Efficient frontier, risk metrics, Monte Carlo stress testing |
+| [03_model_predictive_control.ipynb](examples/03_model_predictive_control.ipynb) | Trajectory tracking, disturbance rejection, real-time benchmarks |
+| [04_stochastic_programming.ipynb](examples/04_stochastic_programming.ipynb) | CVaR optimization, Value of Stochastic Solution |
+| [05_multiperiod_portfolio_optimization.ipynb](examples/05_multiperiod_portfolio_optimization.ipynb) | Multi-period rebalancing with transaction costs |
 
 ---
 
 ## Benchmarks
 
-Performance on an NVIDIA RTX A6000 (48GB):
+Performance measurements on NVIDIA RTX A6000 (48GB VRAM):
 
-| Problem | Size | SciPy (CPU) | cuProx (GPU) | Speedup |
-|---------|------|-------------|--------------|---------|
-| Netlib pilot4 | 410 × 1123 | 50 ms | 10 ms | **5x** |
-| pds-20 | 33K × 108K | 30 s | 2 s | **15x** |
-| Random LP | 1M × 500K | 5 min | 20 s | **15x** |
-| Portfolio QP | 1000 × 1000 | 100 ms | 5 ms | **20x** |
-| Batch 10K LP | 100 × 50 each | 60 s | 0.5 s | **120x** |
+### GPU vs CPU Speedup
 
-*Batch solving is where cuProx truly shines — no other solver offers this.*
+| Problem Type | Size | scipy (CPU) | cuProx (GPU) | Speedup |
+|--------------|------|-------------|--------------|---------|
+| Portfolio QP | 500 assets | 180 ms | 1.3 ms | 135x |
+| Portfolio QP | 1000 assets | 850 ms | 8.2 ms | 103x |
+| MPC QP | 500 variables | 520 ms | 14 ms | 37x |
+| Random LP | 100K x 50K | 45 s | 3.2 s | 14x |
 
----
+<div align="center">
+<img src="examples/portfolio_benchmark.png" alt="Benchmark Results" width="700"/>
+<p><em>Scalability analysis: cuProx maintains consistent speedups as problem size increases</em></p>
+</div>
 
-## How It Works
+### Batch Solving
 
-cuProx uses **Primal-Dual Hybrid Gradient (PDHG)** for LP and **ADMM** for QP. These are first-order methods where every operation is GPU-friendly:
+Solving multiple independent problems in parallel:
 
-```
-PDHG Iteration (LP):
-  y ← project(y + σ(Ax̄ - b))     # Sparse matrix-vector: GPU-perfect
-  x ← project(x - τ(c + Aᵀy))    # Sparse matrix-vector: GPU-perfect
-  x̄ ← 2x - x_prev               # Element-wise: GPU-perfect
-```
-
-Unlike interior-point methods (which require Cholesky factorization — poorly parallelizable), PDHG is embarrassingly parallel.
-
----
-
-## Comparison with Other Solvers
-
-| Feature | cuProx | Gurobi | HiGHS | OSQP | SCS |
-|---------|--------|--------|-------|------|-----|
-| GPU acceleration | Yes (Full) | Limited | No | No | No |
-| Batch solving | Yes (Native) | No | No | No | No |
-| LP support | Yes | Yes | Yes | No | Yes |
-| QP support | Yes | Yes | No | Yes | Yes |
-| MIP support | No | Yes | Yes | No | No |
-| Open source | Dual License | No | Yes | Yes | Yes |
+| Batch Size | Problem Size | Total Time | Throughput |
+|------------|--------------|------------|------------|
+| 100 | 50 x 20 | 85 ms | 1,176 problems/sec |
+| 1,000 | 50 x 20 | 420 ms | 2,380 problems/sec |
+| 10,000 | 50 x 20 | 3.8 s | 2,631 problems/sec |
 
 ---
 
 ## API Reference
 
-### Model Class
+### Core Solve Function
 
 ```python
-class Model:
-    def add_var(lb=0, ub=inf, name=None) -> Variable
-    def add_vars(count, lb=0, ub=inf) -> List[Variable]
-    def add_constr(constraint, name=None) -> Constraint
-    def minimize(expr) -> None
-    def maximize(expr) -> None
-    def solve(params=None, warm_start=None) -> SolveResult
+cuprox.solve(
+    c: np.ndarray,              # Linear objective coefficients
+    A: np.ndarray = None,       # Constraint matrix
+    b: np.ndarray = None,       # Constraint RHS
+    P: np.ndarray = None,       # Quadratic objective (QP only)
+    lb: np.ndarray = None,      # Variable lower bounds
+    ub: np.ndarray = None,      # Variable upper bounds
+    constraint_senses: list = None,  # '<', '<=', '>', '>=', '=', '=='
+) -> SolveResult
 ```
 
-### Solve Functions
+### Model Interface
 
 ```python
-def solve(c, A, b, lb=None, ub=None, P=None, params=None) -> SolveResult
-def solve_batch(problems, params=None) -> List[SolveResult]
+model = cuprox.Model()
+
+# Add variables
+x = model.add_var(lb=0, ub=10, name="x")
+y = model.add_vars(100, lb=0)
+
+# Add constraints
+model.add_constr(x + 2*y[0] <= 20)
+model.add_constr(sum(y) == 1)
+
+# Set objective
+model.minimize(c @ x)  # or model.maximize(...)
+
+# Solve
+result = model.solve()
+```
+
+### Batch Solving
+
+```python
+problems = [
+    {"c": c1, "A": A1, "b": b1, "lb": lb1},
+    {"c": c2, "A": A2, "b": b2, "lb": lb2},
+    # ...
+]
+results = cuprox.solve_batch(problems)
 ```
 
 ### SolveResult
@@ -301,13 +274,61 @@ def solve_batch(problems, params=None) -> List[SolveResult]
 ```python
 @dataclass
 class SolveResult:
-    status: str           # "optimal", "infeasible", "unbounded", etc.
+    status: str           # 'optimal', 'infeasible', 'unbounded', 'max_iter'
     objective: float      # Optimal objective value
-    x: np.ndarray        # Primal solution
-    y: np.ndarray        # Dual solution
-    iterations: int       # Number of iterations
-    solve_time: float     # Wall clock time (seconds)
+    x: np.ndarray         # Primal solution
+    y: np.ndarray         # Dual solution (Lagrange multipliers)
+    iterations: int       # Solver iterations
+    solve_time: float     # Wall-clock time in seconds
 ```
+
+### Solver Parameters
+
+```python
+result = model.solve(params={
+    "tolerance": 1e-6,          # Convergence tolerance
+    "max_iterations": 100000,   # Iteration limit
+    "time_limit": 3600.0,       # Time limit (seconds)
+    "scaling": "ruiz",          # Matrix scaling method
+    "precision": "float64",     # Numerical precision
+    "device": "auto",           # 'auto', 'gpu', or 'cpu'
+    "verbose": False,           # Print solver log
+})
+```
+
+---
+
+## Algorithm
+
+cuProx implements first-order methods optimized for GPU execution:
+
+**Linear Programs**: Primal-Dual Hybrid Gradient (PDHG)
+```
+x^{k+1} = proj(x^k - tau * (c + A^T y^k))
+y^{k+1} = proj(y^k + sigma * (A x^{k+1} - b))
+```
+
+**Quadratic Programs**: Alternating Direction Method of Multipliers (ADMM)
+```
+x^{k+1} = (P + rho * A^T A)^{-1} (rho * A^T (z^k - u^k) - c)
+z^{k+1} = proj(A x^{k+1} + u^k)
+u^{k+1} = u^k + A x^{k+1} - z^{k+1}
+```
+
+These methods consist primarily of sparse matrix-vector products and element-wise operations, which map efficiently to GPU architectures.
+
+---
+
+## Comparison with Other Solvers
+
+| Feature | cuProx | Gurobi | MOSEK | OSQP | SCS |
+|---------|--------|--------|-------|------|-----|
+| GPU Acceleration | Native | Limited | No | No | No |
+| Batch Solving | Native | No | No | No | No |
+| LP Support | Yes | Yes | Yes | No | Yes |
+| QP Support | Yes | Yes | Yes | Yes | Yes |
+| Open Source | Dual License | No | No | Yes | Yes |
+| First-Order Method | Yes | No | No | Yes | Yes |
 
 ---
 
@@ -317,28 +338,27 @@ class SolveResult:
 - [x] QP solver (ADMM)
 - [x] Batch solving
 - [x] CPU fallback
+- [x] Python bindings
 - [ ] PyTorch autograd integration
-- [ ] Windows support
 - [ ] Multi-GPU support
+- [ ] Windows support
 - [ ] SOCP extension
 
 ---
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ```bash
 # Development setup
 git clone https://github.com/Aminsed/cuprox.git
 cd cuprox
 
-# Build C++ library
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Debug -DCUPROX_BUILD_TESTS=ON
 make -j$(nproc)
 
-# Install Python package in development mode
 cd ..
 pip install -e "python/[dev]"
 
@@ -351,11 +371,10 @@ ctest --test-dir build --output-on-failure
 
 ## Citation
 
-If you use cuProx in your research, please cite:
-
 ```bibtex
 @software{cuprox2024,
   title = {cuProx: GPU-Accelerated First-Order LP/QP Solver},
+  author = {Sedaghat, Amin},
   year = {2024},
   url = {https://github.com/Aminsed/cuprox}
 }
@@ -365,21 +384,17 @@ If you use cuProx in your research, please cite:
 
 ## License
 
-**Dual License: Non-Commercial Free / Commercial Paid**
+**Dual License Model**
 
-- ✅ **Free** for personal, academic, research, and non-profit use
-- 💼 **Commercial License required** for business/commercial use
+- **Non-Commercial Use**: Free for personal, academic, research, and educational purposes under MIT-style terms
+- **Commercial Use**: Requires a commercial license
 
-See [LICENSE](LICENSE) for full details. Contact us for commercial licensing.
+See [LICENSE](LICENSE) for complete terms. For commercial licensing inquiries, contact: amin.sedaghat.ext@gmail.com
 
 ---
 
 <div align="center">
 
-**Built for the optimization community**
-
-[Report Bug](https://github.com/Aminsed/cuprox/issues) •
-[Request Feature](https://github.com/Aminsed/cuprox/issues) •
-[Discussions](https://github.com/Aminsed/cuprox/discussions)
+[Report Issue](https://github.com/Aminsed/cuprox/issues) | [Request Feature](https://github.com/Aminsed/cuprox/issues) | [Discussions](https://github.com/Aminsed/cuprox/discussions)
 
 </div>
