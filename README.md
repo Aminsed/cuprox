@@ -209,42 +209,47 @@ print(f"Portfolio variance: {result.objective:.4f}")
 
 ## Example Gallery
 
-cuProx ships with curated notebooks that double as production-ready demos. The visuals below come straight from the refreshed `examples/03_model_predictive_control.ipynb`, executed on an RTX A6000.
+Each core notebook now ships with a couple of “hero” visuals. Browse the highlights below (all generated directly from the notebooks).
 
-### GPU MPC Regulation
+### Notebook 01 — Differentiable QP Layers (PyTorch)
 
-![GPU MPC Regulation](examples/mpc_regulation.png)
+![OptNet Decision-Focused Training](examples/pytorch_decision_focused.png)
+- Decision-focused OptNet stack trained end-to-end on GPU, showing large downstream gains.
 
-- Shooting-form MPC solves a 70-step horizon with centimeter-level accuracy.
-- Control limits of ±3 m/s² are respected without post-processing.
+![QP Gradient Flow](examples/qp_gradient_flow.png)
+- Visualizes the implicit Jacobian used for stable backpropagation through QP layers.
 
-### Sinusoidal Tracking
+### Notebook 02 — Multi-Period Portfolio Optimization
 
-![GPU MPC Tracking](examples/mpc_tracking.png)
+![Efficient Frontier & Capital Market Line](examples/portfolio_frontier.png)
+- Proper Markowitz frontier with capital market line, turnover limits, and transaction costs.
 
-- A single GPU solve produces the full control sequence for a 12-second trajectory.
-- Mean absolute tracking error is ≈ 1.1 m even with tight acceleration bounds.
+![Rolling Backtest Diagnostics](examples/portfolio_backtest.png)
+- Shows realized returns, drawdowns, and turnover over a multi-year simulation.
 
-### Online Disturbance Rejection
+### Notebook 03 — GPU MPC (Shooting Form)
 
-![GPU MPC Disturbance](examples/mpc_disturbance.png)
+![Extreme Racetrack Trajectory](examples/mpc_racing.png)
+- 440-variable shooting MPC solved in ~5 ms with centimeter-level tracking error.
 
-- Re-plans every 100 ms with a 20-step horizon while rejecting injected impulses.
-- Average GPU solve latency stays under 0.2 ms, enabling >1 kHz replanning loops.
+![Disturbance Rejection Replanning](examples/mpc_disturbance.png)
+- 1 kHz replanning loop that absorbs injected velocity impulses while respecting bounds.
 
-### Extreme Racetrack (440 Controls)
+### Notebook 04 — Stochastic Programming at Scale
 
-![GPU MPC Racetrack](examples/mpc_racing.png)
+![Energy Portfolio under Renewable Uncertainty](examples/stochastic_energy.png)
+- Two-stage SAA model allocating gas, solar, and wind with storage and penalty costs.
 
-- 220-step planar double-integrator with ±16 m/s² bounds solves in ~5 ms.
-- Tracks an aggressive racing line with ~1 cm mean position error.
+![CVaR Frontier](examples/stochastic_cvar.png)
+- Risk-averse dispatch showing how CVaR tightening shifts the optimal generation mix.
 
-### Dense Shooting Benchmarks
+### Notebook 05 — Finance Stress Lab
 
-![GPU MPC Benchmark](examples/mpc_benchmark.png)
+![Regime-Aware Frontier](examples/finance_frontier.png)
+- Multi-period frontier with regime switching, leverage caps, and borrowing costs.
 
-- GPU solve times scale linearly with horizon length and stay 5–10× faster than CPU fallback.
-- Highlights how dense shooting QPs benefit from cuProx’s fully GPU-resident ADMM core.
+![GPU vs CPU Stress Benchmarks](examples/finance_benchmark.png)
+- Highlights the RTX A6000 speedup when running thousands of Monte Carlo stress tests.
 
 ---
 
