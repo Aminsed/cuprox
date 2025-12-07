@@ -253,18 +253,18 @@ Each core notebook now ships with a couple of “hero” visuals. Browse the hig
 
 ### Notebook 06 — Learn to Race: Imitation Learning
 
-Neural policy trained to imitate an expert racing driver via GPU-accelerated optimization.
+Neural policy trained to imitate an expert racing driver with GPU-accelerated optimization.
 
 ![Training Progress](examples/training_progress.gif)
-- Live loss curve evolution over 500 epochs. Watch the neural network converge as it learns the expert's driving style.
+- Training loss convergence over 400 epochs.
 
 ![Head-to-Head Race](examples/racing_head2head.gif)
-- Side-by-side comparison of expert (green) vs learned (pink) driver. Real-time gap distance displayed as both cars race the complex track.
+- Expert (green) vs learned (pink) driver comparison with real-time track error display.
 
 ![Control Signals Comparison](examples/controls_comparison.gif)
-- Acceleration and steering commands over time. Expert signals overlaid with learned predictions showing close imitation of the control policy.
+- Acceleration and steering commands. Expert overlaid with learned predictions.
 
-**Results:** 2.27m mean tracking error, 411K parameter model trained in 8.4 seconds.
+**Results:** 77% on-track time, 0.77m mean track error, control RMSE: 0.03 accel, 0.04 steering.
 
 ---
 
