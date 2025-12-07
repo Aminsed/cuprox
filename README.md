@@ -251,6 +251,21 @@ Each core notebook now ships with a couple of “hero” visuals. Browse the hig
 ![GPU vs CPU Stress Benchmarks](examples/finance_benchmark.png)
 - Highlights the RTX A6000 speedup when running thousands of Monte Carlo stress tests.
 
+### Notebook 06 — Learn to Race: Imitation Learning
+
+Neural policy trained to imitate an expert racing driver via GPU-accelerated optimization.
+
+![Training Progress](examples/training_progress.gif)
+- Live loss curve evolution over 500 epochs. Watch the neural network converge as it learns the expert's driving style.
+
+![Head-to-Head Race](examples/racing_head2head.gif)
+- Side-by-side comparison of expert (green) vs learned (pink) driver. Real-time gap distance displayed as both cars race the complex track.
+
+![Control Signals Comparison](examples/controls_comparison.gif)
+- Acceleration and steering commands over time. Expert signals overlaid with learned predictions showing close imitation of the control policy.
+
+**Results:** 2.27m mean tracking error, 411K parameter model trained in 8.4 seconds.
+
 ---
 
 ## Solver Parameters
@@ -363,7 +378,7 @@ class SolveResult:
 - [x] QP solver (ADMM)
 - [x] Batch solving
 - [x] CPU fallback
-- [ ] PyTorch autograd integration
+- [x] PyTorch autograd integration
 - [ ] Windows support
 - [ ] Multi-GPU support
 - [ ] SOCP extension
