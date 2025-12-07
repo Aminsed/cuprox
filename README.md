@@ -251,20 +251,23 @@ Each core notebook now ships with a couple of “hero” visuals. Browse the hig
 ![GPU vs CPU Stress Benchmarks](examples/finance_benchmark.png)
 - Highlights the RTX A6000 speedup when running thousands of Monte Carlo stress tests.
 
-### Notebook 06 — Learn to Race: Imitation Learning
+### Notebook 06 — Learn to Race: GPU-Accelerated Racing AI
 
-Neural policy trained to imitate an expert racing driver with GPU-accelerated optimization.
+Complex track with walls, obstacles, and crash physics. Neural policy learns via imitation learning with DAgger.
+
+![Track Layout](examples/track_layout.png)
+- Racing track with variable-width walls and strategic obstacles.
 
 ![Training Progress](examples/training_progress.gif)
-- Training loss convergence over 400 epochs.
+- Training loss convergence with DAgger iterations adding 200K+ training samples.
 
 ![Head-to-Head Race](examples/racing_head2head.gif)
-- Expert (green) vs learned (pink) driver comparison with real-time track error display.
+- Expert (green) vs learned (pink) racing side-by-side with real-time speed and distance display.
 
 ![Control Signals Comparison](examples/controls_comparison.gif)
-- Acceleration and steering commands. Expert overlaid with learned predictions.
+- Acceleration and steering commands comparison between expert and learned policy.
 
-**Results:** 77% on-track time, 0.77m mean track error, control RMSE: 0.03 accel, 0.04 steering.
+**Training:** 800+ epochs with DAgger, 200K samples, 803K model parameters.
 
 ---
 
