@@ -153,8 +153,8 @@ CsrMatrix<T> CsrMatrix<T>::from_csr(Index rows, Index cols, Index nnz,
 template <typename T>
 void CsrMatrix<T>::spmv(T alpha, const DeviceVector<T>& x,
                         T beta, DeviceVector<T>& y) const {
-    CUPROX_ASSERT(x.size() == num_cols_, "spmv: x size mismatch");
-    CUPROX_ASSERT(y.size() == num_rows_, "spmv: y size mismatch");
+    CUPROX_CHECK_DIM(x.size() == num_cols_, "spmv: x size mismatch");
+    CUPROX_CHECK_DIM(y.size() == num_rows_, "spmv: y size mismatch");
 
     cudaDataType value_type = (sizeof(T) == 4) ? CUDA_R_32F : CUDA_R_64F;
 
@@ -192,8 +192,8 @@ void CsrMatrix<T>::spmv(T alpha, const DeviceVector<T>& x,
 template <typename T>
 void CsrMatrix<T>::spmv_transpose(T alpha, const DeviceVector<T>& x,
                                    T beta, DeviceVector<T>& y) const {
-    CUPROX_ASSERT(x.size() == num_rows_, "spmv_transpose: x size mismatch");
-    CUPROX_ASSERT(y.size() == num_cols_, "spmv_transpose: y size mismatch");
+    CUPROX_CHECK_DIM(x.size() == num_rows_, "spmv_transpose: x size mismatch");
+    CUPROX_CHECK_DIM(y.size() == num_cols_, "spmv_transpose: y size mismatch");
 
     cudaDataType value_type = (sizeof(T) == 4) ? CUDA_R_32F : CUDA_R_64F;
 

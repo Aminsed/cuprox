@@ -154,6 +154,44 @@ __global__ void batch_residual_kernel(
     }
 }
 
+// Fill an int buffer. cudaMemset writes *bytes*, so memset(p, 3, n*sizeof(int))
+// produces 0x03030303 per element rather than 3 -- which left every status
+// holding a value no branch could ever match.
+__global__ void batch_fill_int_kernel(int* p, int value, Index n) {
+    Index i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) p[i] = value;
+}
+
+// r = Ax - b, written to a distinct buffer.
+template <typename T>
+__global__ void batch_primal_residual_vec_kernel(
+    T* r, const T* Ax, const T* b, Index total_m
+) {
+    Index i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < total_m) r[i] = Ax[i] - b[i];
+}
+
+// Dual residual vector: the reduced cost c + A^T y, restricted to the
+// directions the box does not already account for. At a solution this is zero
+// on free coordinates and correctly signed on active bounds.
+template <typename T>
+__global__ void batch_dual_residual_vec_kernel(
+    T* r, const T* c_batch, const T* Aty, const T* x,
+    const T* lb, const T* ub, Index n, Index total_n
+) {
+    Index i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= total_n) return;
+    const Index j = i % n;                    // shared bounds across the batch
+    const T red = c_batch[i] + Aty[i];
+    if (x[i] <= lb[j] + T(1e-9)) {
+        r[i] = fmin(red, T(0));               // at lower bound: red >= 0
+    } else if (x[i] >= ub[j] - T(1e-9)) {
+        r[i] = fmax(red, T(0));               // at upper bound: red <= 0
+    } else {
+        r[i] = red;                           // interior: red == 0
+    }
+}
+
 // Check convergence and update status
 template <typename T>
 __global__ void batch_check_convergence_kernel(
@@ -161,6 +199,8 @@ __global__ void batch_check_convergence_kernel(
     int* iterations,        // (batch_size)
     const T* primal_res,    // (batch_size)
     const T* dual_res,      // (batch_size)
+    const T* scale_primal,  // (batch_size) ||Ax||
+    const T* scale_dual,    // (batch_size) ||c||
     T eps_abs,
     T eps_rel,
     int current_iter,
@@ -172,9 +212,13 @@ __global__ void batch_check_convergence_kernel(
     // Skip if already converged
     if (statuses[b] == 0) return;  // 0 = Optimal
     
-    T tol = eps_abs + eps_rel;  // Simplified tolerance
-    
-    if (primal_res[b] < tol && dual_res[b] < tol) {
+    // Scale each tolerance by the quantity it measures, as OSQP does. The old
+    // `eps_abs + eps_rel` ignored problem scale entirely, so the same absolute
+    // threshold was applied whether the residual was of order 1 or 1e6.
+    const T p_tol = eps_abs + eps_rel * fmax(scale_primal[b], T(1));
+    const T d_tol = eps_abs + eps_rel * fmax(scale_dual[b], T(1));
+
+    if (primal_res[b] < p_tol && dual_res[b] < d_tol) {
         statuses[b] = 0;  // Optimal
         iterations[b] = current_iter;
     }
@@ -185,6 +229,61 @@ __global__ void batch_check_convergence_kernel(
 constexpr int kBlockSize = 256;
 
 // Batched SpMV: y[b] = A * x[b] for all b
+/**
+ * Batched sparse mat-vec, as a single sparse-dense product.
+ *
+ * Every problem in the batch shares A, so applying it to all of them at once is
+ * A @ X with X dense (n x batch_size) -- one cusparseSpMM, not batch_size
+ * SpMVs. The previous implementation looped over the batch and, inside the
+ * loop, allocated two DeviceVectors and made two device-to-device copies per
+ * problem per iteration. That is strictly more work than solving the problems
+ * one at a time, which is why "batched" solving measured slower than sequential.
+ *
+ * Layout: x_batch is (batch_size x n) row-major, which read column-major is
+ * (n x batch_size) with leading dimension n -- exactly the operand SpMM wants,
+ * so no transposition or repacking is needed anywhere.
+ */
+template <typename T>
+static void batched_spmm(
+    const CsrMatrix<T>& A,
+    cusparseOperation_t op,
+    const T* x_batch,
+    T* y_batch,
+    Index batch_size,
+    Index rows_in,     // leading dimension of x_batch
+    Index rows_out     // leading dimension of y_batch
+) {
+    const cudaDataType value_type = (sizeof(T) == 4) ? CUDA_R_32F : CUDA_R_64F;
+    const T alpha = T(1);
+    const T beta = T(0);
+
+    cusparseDnMatDescr_t x_descr, y_descr;
+    CUPROX_CUSPARSE_CHECK(cusparseCreateDnMat(
+        &x_descr, rows_in, batch_size, rows_in,
+        const_cast<T*>(x_batch), value_type, CUSPARSE_ORDER_COL));
+    CUPROX_CUSPARSE_CHECK(cusparseCreateDnMat(
+        &y_descr, rows_out, batch_size, rows_out,
+        y_batch, value_type, CUSPARSE_ORDER_COL));
+
+    size_t buffer_size = 0;
+    CUPROX_CUSPARSE_CHECK(cusparseSpMM_bufferSize(
+        cusparse_handle(), op, CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &alpha, A.descriptor(), x_descr, &beta, y_descr,
+        value_type, CUSPARSE_SPMM_ALG_DEFAULT, &buffer_size));
+
+    void* buffer = nullptr;
+    if (buffer_size > 0) CUPROX_CUDA_CHECK(cudaMalloc(&buffer, buffer_size));
+
+    CUPROX_CUSPARSE_CHECK(cusparseSpMM(
+        cusparse_handle(), op, CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &alpha, A.descriptor(), x_descr, &beta, y_descr,
+        value_type, CUSPARSE_SPMM_ALG_DEFAULT, buffer));
+
+    if (buffer) cudaFree(buffer);
+    CUPROX_CUSPARSE_CHECK(cusparseDestroyDnMat(x_descr));
+    CUPROX_CUSPARSE_CHECK(cusparseDestroyDnMat(y_descr));
+}
+
 template <typename T>
 void batched_spmv(
     const CsrMatrix<T>& A,
@@ -194,23 +293,10 @@ void batched_spmv(
     Index n,
     Index m
 ) {
-    // For each problem, do SpMV
-    // This could be optimized with batched cuSPARSE, but sequential is simple
-    for (Index b = 0; b < batch_size; ++b) {
-        DeviceVector<T> x_view, y_view;
-        // Create views (this is a hack - ideally use proper batched ops)
-        // For now, we'll do it sequentially
-        
-        // Copy to temp vectors and do SpMV
-        DeviceVector<T> x_tmp(n), y_tmp(m);
-        copy_device_to_device(x_tmp.data(), x_batch + b * n, n);
-        y_tmp.fill(T(0));
-        A.spmv(T(1), x_tmp, T(0), y_tmp);
-        copy_device_to_device(y_batch + b * m, y_tmp.data(), m);
-    }
+    batched_spmm(A, CUSPARSE_OPERATION_NON_TRANSPOSE, x_batch, y_batch,
+                 batch_size, n, m);
 }
 
-// Batched SpMV transpose: y[b] = A' * x[b] for all b
 template <typename T>
 void batched_spmv_transpose(
     const CsrMatrix<T>& A,
@@ -220,13 +306,8 @@ void batched_spmv_transpose(
     Index n,
     Index m
 ) {
-    for (Index b = 0; b < batch_size; ++b) {
-        DeviceVector<T> x_tmp(m), y_tmp(n);
-        copy_device_to_device(x_tmp.data(), x_batch + b * m, m);
-        y_tmp.fill(T(0));
-        A.spmv_transpose(T(1), x_tmp, T(0), y_tmp);
-        copy_device_to_device(y_batch + b * n, y_tmp.data(), n);
-    }
+    batched_spmm(A, CUSPARSE_OPERATION_TRANSPOSE, x_batch, y_batch,
+                 batch_size, m, n);
 }
 
 template <typename T>
@@ -255,6 +336,8 @@ BatchPdhgResult<T> BatchPdhgSolver<T>::solve(BatchLPProblem<T>& problem) {
     DevicePtr<T> objectives(batch_size);
     DevicePtr<int> statuses(batch_size);
     DevicePtr<int> iterations(batch_size);
+    DevicePtr<T> scale_primal(batch_size);
+    DevicePtr<T> scale_dual(batch_size);
     
     Index total_n = batch_size * n;
     Index total_m = batch_size * m;
@@ -266,8 +349,10 @@ BatchPdhgResult<T> BatchPdhgSolver<T>::solve(BatchLPProblem<T>& problem) {
     batch_kernels::init_zero_kernel<<<blocks_n, kBlockSize>>>(x.get(), total_n);
     batch_kernels::init_zero_kernel<<<blocks_m, kBlockSize>>>(y.get(), total_m);
     
-    // Initialize statuses to MaxIterations (3) and iterations to max
-    cudaMemset(statuses.get(), 3, batch_size * sizeof(int));  // MaxIterations
+    // Initialise statuses to MaxIterations. cudaMemset writes bytes, so it
+    // cannot be used to store the value 3 in an int.
+    batch_kernels::batch_fill_int_kernel<<<blocks_batch, kBlockSize>>>(
+        statuses.get(), static_cast<int>(Status::MaxIterations), batch_size);
     
     // Set iterations to 0
     cudaMemset(iterations.get(), 0, batch_size * sizeof(int));
@@ -307,32 +392,36 @@ BatchPdhgResult<T> BatchPdhgSolver<T>::solve(BatchLPProblem<T>& problem) {
             // Compute A * x for residuals
             batched_spmv(*problem.A, x.get(), Ax.get(), batch_size, n, m);
             
-            // Compute primal residual: ||Ax - b||
-            // First compute r = Ax - b
+            // Primal residual ||Ax - b|| per problem.
             DevicePtr<T> residual_vec(total_m);
-            batch_kernels::batch_dual_update_kernel<<<blocks_m, kBlockSize>>>(
-                residual_vec.get(), Ax.get(), Ax.get(), problem.b_batch.get(), 
-                T(-1), total_m);  // r = Ax + (-1)*(Ax - b) => this is wrong
-            
-            // Actually compute r = Ax - b properly
-            cudaMemcpy(residual_vec.get(), Ax.get(), total_m * sizeof(T), 
-                       cudaMemcpyDeviceToDevice);
-            batch_kernels::batch_dual_update_kernel<<<blocks_m, kBlockSize>>>(
-                residual_vec.get(), residual_vec.get(), residual_vec.get(), 
-                problem.b_batch.get(), T(-1), total_m);
-            // Now residual_vec = Ax - b (approximately)
-            
-            batch_kernels::batch_residual_kernel<<<batch_size, kBlockSize, 
-                kBlockSize * sizeof(T)>>>(primal_res.get(), residual_vec.get(), 
-                                           batch_size, m);
-            
-            // Simple dual residual (using change in y as proxy)
-            // This is a simplification
-            cudaMemset(dual_res.get(), 0, batch_size * sizeof(T));
-            
+            batch_kernels::batch_primal_residual_vec_kernel<<<blocks_m, kBlockSize>>>(
+                residual_vec.get(), Ax.get(), problem.b_batch.get(), total_m);
+            batch_kernels::batch_residual_kernel<<<batch_size, kBlockSize,
+                kBlockSize * sizeof(T)>>>(primal_res.get(), residual_vec.get(),
+                                          batch_size, m);
+            batch_kernels::batch_residual_kernel<<<batch_size, kBlockSize,
+                kBlockSize * sizeof(T)>>>(scale_primal.get(), Ax.get(),
+                                          batch_size, m);
+
+            // Dual residual ||c + A^T y|| restricted by the active bounds. This
+            // used to be memset to zero, so convergence rested on the primal
+            // residual alone and "optimal" carried no dual information.
+            batched_spmv_transpose(*problem.A, y.get(), Aty.get(), batch_size, n, m);
+            DevicePtr<T> dual_vec(total_n);
+            batch_kernels::batch_dual_residual_vec_kernel<<<blocks_n, kBlockSize>>>(
+                dual_vec.get(), problem.c_batch.get(), Aty.get(), x.get(),
+                problem.lb->data(), problem.ub->data(), n, total_n);
+            batch_kernels::batch_residual_kernel<<<batch_size, kBlockSize,
+                kBlockSize * sizeof(T)>>>(dual_res.get(), dual_vec.get(),
+                                          batch_size, n);
+            batch_kernels::batch_residual_kernel<<<batch_size, kBlockSize,
+                kBlockSize * sizeof(T)>>>(scale_dual.get(), problem.c_batch.get(),
+                                          batch_size, n);
+
             // Check convergence
             batch_kernels::batch_check_convergence_kernel<<<blocks_batch, kBlockSize>>>(
                 statuses.get(), iterations.get(), primal_res.get(), dual_res.get(),
+                scale_primal.get(), scale_dual.get(),
                 settings_.eps_abs, settings_.eps_rel, iter, batch_size);
             
             CUPROX_CUDA_CHECK_LAST();
