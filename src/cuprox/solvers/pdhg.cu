@@ -3,6 +3,7 @@
 #include "../core/cuda_context.cuh"
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <iostream>
 
 namespace cuprox {
@@ -45,25 +46,27 @@ __global__ void extrapolation_kernel(
     }
 }
 
+/**
+ * Dual update for the general constraint l <= Ax <= u.
+ *
+ * PDHG needs y_new = prox_{sigma * g*}(y + sigma * A x_bar), where g is the
+ * indicator of [l, u]. Moreau decomposition turns the conjugate prox into a
+ * projection onto the set itself:
+ *
+ *     prox_{sigma g*}(v) = v - sigma * proj_[l,u](v / sigma)
+ *
+ * which specialises correctly to every case the solver has to handle:
+ *   equality  (l = u = b) : proj = b        -> y + sigma (A x_bar - b)
+ *   one-sided (u = +inf)  : proj = max(w,l)
+ *   two-sided             : proj = clamp(w,l,u)
+ *   free      (l=-inf,u=+inf): proj = w     -> y_new = 0
+ *
+ * The previous code launched an equality-only kernel unconditionally, so any
+ * inequality was solved as though it were an equality and the iteration
+ * diverged on over-determined systems.
+ */
 template <typename T>
-__global__ void dual_update_eq_kernel(
-    T* y_new,
-    const T* y,
-    const T* Ax,
-    const T* b,
-    T sigma,
-    Index m
-) {
-    Index i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < m) {
-        // y_new = y + sigma * (A * x_bar - b)
-        // For equality constraints, no projection needed
-        y_new[i] = y[i] + sigma * (Ax[i] - b[i]);
-    }
-}
-
-template <typename T>
-__global__ void dual_update_ineq_kernel(
+__global__ void dual_update_kernel(
     T* y_new,
     const T* y,
     const T* Ax,
@@ -74,34 +77,36 @@ __global__ void dual_update_ineq_kernel(
 ) {
     Index i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < m) {
-        // For l <= Ax <= u constraints
-        // y_new = y + sigma * Ax, then project onto [l - Ax, u - Ax] (dual feasibility)
-        T ax = Ax[i];
-        T y_val = y[i] + sigma * ax;
-        
-        // Dual variable for l <= Ax: y >= 0
-        // Dual variable for Ax <= u: y <= 0
-        // Combined: project to enforce complementarity
-        if (l[i] > T(-1e20) && u[i] < T(1e20)) {
-            // Two-sided constraint
-            y_new[i] = y_val;
-        } else if (l[i] > T(-1e20)) {
-            // ax >= l only: y >= 0
-            y_new[i] = fmax(y_val, T(0));
-        } else if (u[i] < T(1e20)) {
-            // ax <= u only: y <= 0
-            y_new[i] = fmin(y_val, T(0));
-        } else {
-            // Free constraint (shouldn't happen in well-formed LP)
-            y_new[i] = T(0);
-        }
+        const T v = y[i] + sigma * Ax[i];
+        const T w = v / sigma;
+        const T proj = fmin(fmax(w, l[i]), u[i]);
+        y_new[i] = v - sigma * proj;
+    }
+}
+
+/**
+ * Primal residual for l <= Ax <= u: the distance from Ax to the feasible box,
+ * ||Ax - proj_[l,u](Ax)||. For an equality row (l = u = b) this is exactly
+ * |Ax - b|, so the equality behaviour is unchanged.
+ */
+/**
+ * Apply the Ruiz row scaling to a constraint bound vector, exactly as
+ * ruiz_equilibrate does to b: v_i <- v_i * D_i * b_scale. Infinite entries stay
+ * infinite, which is what keeps a one-sided row one-sided after scaling.
+ */
+template <typename T>
+__global__ void scale_bounds_kernel(T* v, const T* D, T b_scale, Index m) {
+    Index i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < m) {
+        v[i] = v[i] * D[i] * b_scale;
     }
 }
 
 template <typename T>
 __global__ void compute_primal_residual_kernel(
     const T* Ax,
-    const T* b,
+    const T* l,
+    const T* u,
     T* residual,
     Index m
 ) {
@@ -110,7 +115,12 @@ __global__ void compute_primal_residual_kernel(
     Index tid = threadIdx.x;
     Index i = blockIdx.x * blockDim.x + tid;
     
-    T val = (i < m) ? (Ax[i] - b[i]) * (Ax[i] - b[i]) : T(0);
+    T viol = T(0);
+    if (i < m) {
+        const T proj = fmin(fmax(Ax[i], l[i]), u[i]);
+        viol = Ax[i] - proj;
+    }
+    T val = viol * viol;
     sdata[tid] = val;
     __syncthreads();
     
@@ -201,9 +211,25 @@ void PdhgSolver<T>::initialize(LPProblem<T>& problem) {
     l_ = &problem.l;
     u_ = &problem.u;
     
-    // Apply Ruiz scaling if enabled
+    // Apply Ruiz scaling if enabled.
+    //
+    // ruiz_equilibrate scales A, c and b. The constraint bounds l and u live on
+    // the same rows as b and must receive the same scaling, or the dual update
+    // projects onto a box that no longer matches the scaled problem. Keeping
+    // scaled copies also means the caller's l and u are left untouched.
     if (settings_.scaling) {
         scaling_ = ruiz_equilibrate(*A_, *c_, *b_, settings_.scaling_iters);
+
+        l_scaled_.copy_from(problem.l);
+        u_scaled_.copy_from(problem.u);
+        const int nb_m = (m_ + kBlockSize - 1) / kBlockSize;
+        kernels::scale_bounds_kernel<<<nb_m, kBlockSize>>>(
+            l_scaled_.data(), scaling_.D.data(), scaling_.b_scale, m_);
+        kernels::scale_bounds_kernel<<<nb_m, kBlockSize>>>(
+            u_scaled_.data(), scaling_.D.data(), scaling_.b_scale, m_);
+        CUPROX_CUDA_CHECK_LAST();
+        l_ = &l_scaled_;
+        u_ = &u_scaled_;
     }
     
     // Compute step sizes
@@ -265,9 +291,9 @@ void PdhgSolver<T>::iterate() {
     Ax_.fill(T(0));
     A_->spmv(T(1), x_bar_, T(0), Ax_);
     
-    // Dual update: y = y + sigma * (A * x_bar - b)
-    kernels::dual_update_eq_kernel<<<num_blocks_m, kBlockSize>>>(
-        y_.data(), y_prev_.data(), Ax_.data(), b_->data(), sigma_, m_);
+    // Dual update: y = prox_{sigma g*}(y + sigma A x_bar), g = indicator[l, u]
+    kernels::dual_update_kernel<<<num_blocks_m, kBlockSize>>>(
+        y_.data(), y_prev_.data(), Ax_.data(), l_->data(), u_->data(), sigma_, m_);
     CUPROX_CUDA_CHECK_LAST();
     
     ++iter_;
@@ -287,7 +313,7 @@ void PdhgSolver<T>::compute_residuals() {
     // Primal residual: ||Ax - b||
     DevicePtr<T> partial_p(num_blocks_m);
     kernels::compute_primal_residual_kernel<<<num_blocks_m, kBlockSize>>>(
-        Ax_.data(), b_->data(), partial_p.get(), m_);
+        Ax_.data(), l_->data(), u_->data(), partial_p.get(), m_);
     CUPROX_CUDA_CHECK_LAST();
     
     std::vector<T> h_partial_p(num_blocks_m);
@@ -321,12 +347,13 @@ bool PdhgSolver<T>::check_convergence() {
     compute_residuals();
     
     // Relative tolerances
-    T x_norm = x_.norm2();
-    T y_norm = y_.norm2();
-    T b_norm = b_->norm2();
     T c_norm = c_->norm2();
-    
-    T primal_tol = settings_.eps_abs + settings_.eps_rel * std::max(b_norm, T(1));
+    // Scale the primal tolerance by ||Ax||: with general l <= Ax <= u there is
+    // no single right-hand side to measure against, and Ax is the quantity the
+    // primal residual is actually about.
+    T ax_norm = Ax_.norm2();
+
+    T primal_tol = settings_.eps_abs + settings_.eps_rel * std::max(ax_norm, T(1));
     T dual_tol = settings_.eps_abs + settings_.eps_rel * std::max(c_norm, T(1));
     
     if (settings_.verbose && (iter_ % 100 == 0 || iter_ == 1)) {
@@ -406,9 +433,24 @@ PdhgResult<T> PdhgSolver<T>::solve(LPProblem<T>& problem) {
     auto end_time = std::chrono::high_resolution_clock::now();
     double elapsed = std::chrono::duration<double>(end_time - start_time).count();
     
-    // Compute objectives with ORIGINAL (unscaled) c and b
+    // Objectives with the ORIGINAL (unscaled) data.
+    //
+    // The dual value of a row is the support function of [l, u], not b^T y:
+    // sup_{l <= z <= u} y^T z picks u where y is positive and l where it is
+    // negative. Reporting b^T y was only ever right for equality rows, and b is
+    // not even meaningful for an inequality problem.
     T primal_obj = c_orig.dot(x_);
-    T dual_obj = b_orig.dot(y_);
+
+    const auto h_y = y_.to_host();
+    const auto h_l = problem.l.to_host();
+    const auto h_u = problem.u.to_host();
+    T dual_obj = T(0);
+    for (size_t i = 0; i < h_y.size(); ++i) {
+        const T yi = h_y[i];
+        const T bnd = (yi > T(0)) ? h_u[i] : h_l[i];
+        if (std::isinf(bnd)) { dual_obj = -std::numeric_limits<T>::infinity(); break; }
+        dual_obj -= bnd * yi;
+    }
     
     // Populate result
     result.x = std::move(x_);

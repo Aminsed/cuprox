@@ -30,7 +30,7 @@ cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and
 |---------|-------------|
 | **Fast** | 10-100x speedup over CPU solvers on large problems |
 | **Focused** | LP and QP only — does one thing exceptionally well |
-| **Batch Solving** | Solve 1000s of problems in parallel (unique capability) |
+| **Batch solving** | Sequential today; a batched kernel exists but is experimental (see below) |
 | **ML-Ready** | PyTorch integration for differentiable optimization |
 | **Fallback** | Automatic CPU fallback if no GPU available |
 
@@ -68,15 +68,14 @@ cuProx is built from source to ensure optimal performance for your specific hard
 git clone https://github.com/Aminsed/cuprox.git
 cd cuprox
 
-# Build the C++ library and Python bindings
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-# Install the Python package (from project root)
-cd ..
-pip install -e python/
+# Build and install in one step, from the repository root
+pip install .
 ```
+
+That single command builds the CUDA library and the extension and installs them
+together. Installing from `python/` instead will *not* build the extension: the
+package will import, report `__cuda_available__ == False`, and quietly fall back
+to SciPy.
 
 ### Quick Start (CPU Only)
 
@@ -152,30 +151,26 @@ print(f"Solved in {result.solve_time:.3f} seconds")
 print(f"Iterations: {result.iterations}")
 ```
 
-### Example 3: Batch Solving (1000 LPs in Parallel)
+### Example 3: Solving Many Problems
 
 ```python
 import cuprox
 import numpy as np
+from scipy import sparse
 
-# Generate 1000 small LP problems
-problems = []
-for i in range(1000):
-    n, m = 100, 50
-    problems.append({
-        "c": np.random.randn(n),
-        "A": sparse.random(m, n, density=0.1, format='csr'),
-        "b": np.random.rand(m),
-        "lb": np.zeros(n),
-    })
+problems = [
+    {"c": np.random.randn(100), "A": sparse.random(50, 100, density=0.1, format="csr"),
+     "b": np.random.rand(50), "lb": np.zeros(100)}
+    for _ in range(1000)
+]
 
-# Solve ALL in parallel on GPU
 results = cuprox.solve_batch(problems)
-
-# All 1000 solved in ~100ms (vs ~10s sequential)
-print(f"Solved {len(results)} problems")
-print(f"All optimal: {all(r.status == 'optimal' for r in results)}")
 ```
+
+`solve_batch` currently solves these **one after another**. A batched PDHG kernel
+exists and can be reached with `params={"batched": True}`, but it is experimental
+and at present both slower and less reliable than the sequential path, so it is
+not the default. See [Known limitations](#known-limitations).
 
 ### Example 4: Quadratic Program (Portfolio Optimization)
 
@@ -225,12 +220,12 @@ Each core notebook now ships with a couple of “hero” visuals. Browse the hig
 - Proper Markowitz frontier with capital market line, turnover limits, and transaction costs.
 
 ![Rolling Backtest Diagnostics](examples/portfolio_backtest.png)
-- Shows realized returns, drawdowns, and turnover over a multi-year simulation.
+- Realised returns, drawdowns, and turnover over a multi-year simulation.
 
 ### Notebook 03 — GPU MPC (Shooting Form)
 
 ![Extreme Racetrack Trajectory](examples/mpc_racing.png)
-- 440-variable shooting MPC solved in ~5 ms with centimeter-level tracking error.
+- 440-variable shooting MPC with centimetre-level tracking error.
 
 ![Disturbance Rejection Replanning](examples/mpc_disturbance.png)
 - 1 kHz replanning loop that absorbs injected velocity impulses while respecting bounds.
@@ -249,7 +244,7 @@ Each core notebook now ships with a couple of “hero” visuals. Browse the hig
 - Multi-period frontier with regime switching, leverage caps, and borrowing costs.
 
 ![GPU vs CPU Stress Benchmarks](examples/finance_benchmark.png)
-- Highlights the RTX A6000 speedup when running thousands of Monte Carlo stress tests.
+- Monte Carlo stress testing across thousands of scenarios.
 
 ### Notebook 06 — Learn to Race: GPU-Accelerated Racing AI
 
@@ -278,18 +273,10 @@ result = model.solve(params={
     # Convergence
     "tolerance": 1e-6,        # Primal/dual residual tolerance
     "max_iterations": 100000, # Maximum iterations
-    "time_limit": 3600.0,     # Time limit in seconds
-    
-    # Algorithm
-    "scaling": "ruiz",        # "ruiz", "geometric", or "none"
-    "restart": "adaptive",    # "adaptive", "fixed", or "none"
-    
-    # Precision
-    "precision": "float64",   # "float32" (faster) or "float64" (accurate)
     
     # Device
-    "device": "auto",         # "auto", "gpu", or "cpu"
-    "verbose": True,          # Print iteration log
+    "device": "gpu",          # "gpu" (default) or "cpu" to force the fallback
+    "verbose": True,          # Print an iteration log
 })
 ```
 
@@ -297,19 +284,34 @@ result = model.solve(params={
 
 ## Benchmarks
 
-Performance on an NVIDIA RTX A6000 (48GB):
+Measured on an NVIDIA RTX A6000 against OSQP on a 24-thread i9-12900K, QPs with
+`m = n/2`, tolerance `1e-4`, best of 3 runs. Every row was checked against OSQP's
+objective; relative disagreement stayed between `1e-7` and `1e-8` throughout.
 
-| Problem | Size | SciPy (CPU) | cuProx (GPU) | Speedup |
-|---------|------|-------------|--------------|---------|
-| Netlib pilot4 | 410 × 1123 | 50 ms | 10 ms | **5x** |
-| pds-20 | 33K × 108K | 30 s | 2 s | **15x** |
-| Random LP | 1M × 500K | 5 min | 20 s | **15x** |
-| Portfolio QP | 1000 × 1000 | 100 ms | 5 ms | **20x** |
-| Batch 10K LP | 100 × 50 each | 60 s | 0.5 s | **120x** |
+The result depends strongly on **sparsity pattern**, so both cases are given.
 
-*Batch solving is where cuProx truly shines — no other solver offers this.*
+| n | banded `A` | random `A` |
+|--:|-----------:|-----------:|
+| 1,000 | 0.02x | 0.54x |
+| 5,000 | 0.11x | **62x** |
+| 20,000 | 0.42x | - |
+| 100,000 | **2.05x** | - |
+| 400,000 | **3.56x** | - |
 
----
+Reading it honestly: cuProx is *slower* than a good CPU solver on small or
+well-structured problems, and much faster on large or awkwardly-structured ones.
+
+The reason is structural rather than incidental. cuProx is matrix-free: a PDHG or
+ADMM iteration costs a few sparse mat-vecs and some element-wise work, and that
+cost is the same whatever the sparsity pattern looks like. OSQP factorises, which
+is superb when the factor stays sparse and expensive when it fills in. So the
+crossover is not really about problem size, it is about how badly the
+factorisation fills in - which is why the two columns above diverge so sharply at
+the same `n`.
+
+Reproduce with `python benchmarks/benchmark_qp.py`. Note that the GPU must be
+otherwise idle: benchmarking against a busy GPU inflated these numbers by 20-40x
+in early runs.
 
 ## How It Works
 
@@ -323,6 +325,21 @@ PDHG Iteration (LP):
 ```
 
 Unlike interior-point methods (which require Cholesky factorization — poorly parallelizable), PDHG is embarrassingly parallel.
+
+---
+
+## Known limitations
+
+- **Batch solving is sequential.** The batched PDHG kernel is compiled and
+  reachable via `params={"batched": True}`, but its status reporting, convergence
+  test and residual computation all need work before it can be the default.
+- **ADMM does not equilibrate.** OSQP applies Ruiz scaling by default; cuProx
+  does not for QP. Badly scaled problems can stall, and the fix is to scale the
+  problem before handing it over. PDHG does support Ruiz scaling.
+- **Small problems are slower than a CPU solver.** Below roughly 10,000
+  variables a good CPU solver usually wins; see [Benchmarks](#benchmarks).
+- **Moderate accuracy.** First-order methods target `1e-4` to `1e-8`. For tighter
+  tolerances use an interior-point solver.
 
 ---
 
@@ -402,11 +419,10 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Debug -DCUPROX_BUILD_TESTS=ON
 make -j$(nproc)
 
-# Install Python package in development mode
-cd ..
-pip install -e "python/[dev]"
+# Editable install, from the repository root
+pip install -e ".[dev]"
 
-# Run tests
+# Run tests (the Python suite needs a GPU and the installed extension)
 pytest tests/python/
 ctest --test-dir build --output-on-failure
 ```
@@ -420,7 +436,7 @@ If you use cuProx in your research, please cite:
 ```bibtex
 @software{cuprox2024,
   title = {cuProx: GPU-Accelerated First-Order LP/QP Solver},
-  year = {2024},
+  year = {2025},
   url = {https://github.com/Aminsed/cuprox}
 }
 ```

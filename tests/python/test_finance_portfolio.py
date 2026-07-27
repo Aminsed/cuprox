@@ -160,7 +160,6 @@ class TestMeanVariance:
 class TestMinVariance:
     """Test minimum variance optimization."""
 
-    @pytest.mark.skip(reason="Min variance test unstable with CPU solver")
     def test_basic_min_variance(self, simple_returns):
         """Basic minimum variance."""
         from cuprox.finance import Portfolio
@@ -198,7 +197,6 @@ class TestMaxSharpe:
         # Relaxed tolerance for CPU solver
         assert abs(result.weights.sum() - 1.0) < 0.1
 
-    @pytest.mark.skip(reason="Max Sharpe comparison unstable with CPU solver")
     def test_max_sharpe_is_maximum(self, simple_returns):
         """Max Sharpe has highest Sharpe ratio."""
         from cuprox.finance import Portfolio
@@ -248,7 +246,6 @@ class TestRiskParity:
             np.testing.assert_allclose(rc_normalized, expected, atol=0.1)
 
 
-@pytest.mark.skip(reason="Target return tests unstable with CPU solver")
 class TestTargetReturn:
     """Test target return optimization."""
 
@@ -272,7 +269,6 @@ class TestTargetReturn:
         assert abs(result.weights.sum() - 1.0) < 1e-3
 
 
-@pytest.mark.skip(reason="Target volatility tests unstable with CPU solver")
 class TestTargetVolatility:
     """Test target volatility optimization."""
 
@@ -295,7 +291,6 @@ class TestTargetVolatility:
         assert abs(result.volatility - target_vol) < 0.02
 
 
-@pytest.mark.skip(reason="Edge case tests unstable with CPU solver")
 class TestEdgeCases:
     """Test edge cases."""
 
