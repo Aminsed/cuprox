@@ -2,6 +2,8 @@
 pytest configuration and fixtures for cuProx tests.
 """
 
+import pathlib
+
 import numpy as np
 import pytest
 
@@ -199,13 +201,25 @@ def requires_scipy():
         pytest.skip("scipy not available")
 
 
-def pytest_collection_modifyitems(config, items):
-    """Skip GPU-dependent tests when no CUDA device is present.
+# Suites that do not depend on which solver is underneath: pure Python API,
+# model construction, risk maths, imports. Everything else asserts on solver
+# behaviour -- statuses, iteration counts, achieved accuracy, training
+# convergence -- and the CPU fallback is a different solver (scipy), so those
+# cannot pass without a device.
+_SOLVER_INDEPENDENT = (
+    "test_import.py",
+    "test_model.py",
+    "test_finance_risk.py",
+    "test_mpc_dynamics.py",
+)
 
-    The CPU fallback is a genuinely different solver (scipy), so tests that
-    assert on the CUDA path -- or that need its accuracy -- cannot pass without
-    a device. Marking them here keeps the CPU CI job meaningful instead of
-    red.
+
+def pytest_collection_modifyitems(config, items):
+    """Skip solver-dependent tests when there is no CUDA device.
+
+    Keeping the CPU job to the solver-independent suites makes a green run mean
+    something. Previously the whole suite ran against the scipy fallback and
+    passed, which is how a completely non-functional CUDA path went unnoticed.
     """
     import cuprox
 
@@ -213,21 +227,6 @@ def pytest_collection_modifyitems(config, items):
         return
     skip = pytest.mark.skip(reason="requires a CUDA device (running the CPU fallback)")
     for item in items:
-        path = str(item.fspath)
-        if (
-            "test_regressions.py" in path
-            or "test_finance_integration.py" in path
-            or "test_finance_portfolio.py" in path
-            # These assert on solver behaviour (iteration counts, statuses)
-            # that only the CUDA solvers produce; scipy reports neither.
-            or "test_solver_lp.py" in path
-            or "test_solver_qp.py" in path
-            or "test_accuracy.py" in path
-            or "test_stochastic_problem.py" in path
-            or "test_stochastic_saa.py" in path
-            # Differentiates through the solver, so its convergence
-            # depends on which solver is underneath.
-            or "test_torch_autograd.py" in path
-            or "gpu" in item.keywords
-        ):
+        name = pathlib.Path(str(item.fspath)).name
+        if name not in _SOLVER_INDEPENDENT:
             item.add_marker(skip)
