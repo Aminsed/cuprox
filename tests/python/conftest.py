@@ -225,6 +225,9 @@ def pytest_collection_modifyitems(config, items):
             or "test_accuracy.py" in path
             or "test_stochastic_problem.py" in path
             or "test_stochastic_saa.py" in path
+            # Differentiates through the solver, so its convergence
+            # depends on which solver is underneath.
+            or "test_torch_autograd.py" in path
             or "gpu" in item.keywords
         ):
             item.add_marker(skip)
