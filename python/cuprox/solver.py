@@ -350,7 +350,8 @@ def _solve_cpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
                 b_eq=b_eq,
                 bounds=bounds,
                 method="highs",
-                options={"maxiter": max_iters, "tol": tol},
+                # HiGHS has no `tol` option; passing one raises OptimizeWarning.
+                options={"maxiter": max_iters},
             )
             status_map = {
                 0: Status.OPTIMAL,
