@@ -20,7 +20,7 @@ conditions to compute gradients efficiently.
 from __future__ import annotations
 
 import warnings
-from typing import Any, Optional, Tuple, NamedTuple
+from typing import Any, NamedTuple, Optional, Tuple
 
 import numpy as np
 
@@ -40,14 +40,15 @@ from .utils import to_numpy, to_torch
 
 class QPSolution(NamedTuple):
     """Solution to a QP with primal and dual variables."""
-    x: Tensor          # Primal solution
-    nu: Tensor         # Equality dual (Lagrange multipliers for Ax = b)
-    lam: Tensor        # Inequality dual (Lagrange multipliers for Gx <= h)
-    lam_lb: Tensor     # Lower bound dual
-    lam_ub: Tensor     # Upper bound dual
+
+    x: Tensor  # Primal solution
+    nu: Tensor  # Equality dual (Lagrange multipliers for Ax = b)
+    lam: Tensor  # Inequality dual (Lagrange multipliers for Gx <= h)
+    lam_lb: Tensor  # Lower bound dual
+    lam_ub: Tensor  # Upper bound dual
     active_ineq: Tensor  # Active inequality mask
-    active_lb: Tensor    # Active lower bound mask
-    active_ub: Tensor    # Active upper bound mask
+    active_lb: Tensor  # Active lower bound mask
+    active_ub: Tensor  # Active upper bound mask
 
 
 class QPFunction(Function):
@@ -90,7 +91,7 @@ class QPFunction(Function):
     ) -> Tensor:
         """
         Solve QP and save tensors for backward.
-        
+
         Supports batched input:
         - P: (batch, n, n) or (n, n)
         - q: (batch, n) or (n,)
@@ -98,7 +99,7 @@ class QPFunction(Function):
         """
         device, dtype = q.device, q.dtype
         is_batched = q.dim() == 2
-        
+
         if is_batched:
             batch_size = q.shape[0]
             n = q.shape[1]
@@ -108,17 +109,26 @@ class QPFunction(Function):
 
         # Solve QP(s)
         x, sol_info = QPFunction._solve_batch(
-            P, q, A, b, G, h, lb, ub, 
-            max_iters, eps, verbose, 
-            device, dtype, is_batched
+            P, q, A, b, G, h, lb, ub, max_iters, eps, verbose, device, dtype, is_batched
         )
 
         # Save for backward
-        ctx.save_for_backward(P, q, A, b, G, h, lb, ub, x,
-                              sol_info['nu'], sol_info['lam'],
-                              sol_info['active_ineq'], 
-                              sol_info['active_lb'],
-                              sol_info['active_ub'])
+        ctx.save_for_backward(
+            P,
+            q,
+            A,
+            b,
+            G,
+            h,
+            lb,
+            ub,
+            x,
+            sol_info["nu"],
+            sol_info["lam"],
+            sol_info["active_ineq"],
+            sol_info["active_lb"],
+            sol_info["active_ub"],
+        )
         ctx.is_batched = is_batched
         ctx.n = n
         ctx.n_eq = A.shape[-2] if A is not None else 0
@@ -145,6 +155,7 @@ class QPFunction(Function):
     ) -> Tuple[Tensor, dict]:
         """Solve QP(s) using cuprox with optional batching."""
         from scipy import sparse
+
         from .. import solve as cuprox_solve
         from ..result import Status
 
@@ -251,7 +262,7 @@ class QPFunction(Function):
                 # Solve A'ν = -residual (restricted to A subspace)
                 try:
                     nu_i = np.linalg.lstsq(A_np.T, -residual, rcond=None)[0]
-                except:
+                except Exception:
                     nu_i = np.zeros(n_eq)
             else:
                 nu_i = np.zeros(0)
@@ -262,7 +273,7 @@ class QPFunction(Function):
                 h_np = to_numpy(h[i])
                 slack = h_np - G_np @ x_sol
                 active_ineq_i = slack < eps_active
-                
+
                 # Estimate λ for active constraints
                 lam_i = np.zeros(n_ineq)
                 if active_ineq_i.any():
@@ -274,7 +285,7 @@ class QPFunction(Function):
                     try:
                         lam_act = np.linalg.lstsq(G_act.T, -residual, rcond=None)[0]
                         lam_i[active_ineq_i] = np.maximum(lam_act, 0)  # λ >= 0
-                    except:
+                    except Exception:
                         pass
             else:
                 lam_i = np.zeros(0)
@@ -288,9 +299,21 @@ class QPFunction(Function):
 
         # Stack results
         x = torch.stack([to_torch(xi, device, dtype) for xi in x_list])
-        nu = torch.stack([to_torch(ni, device, dtype) for ni in nu_list]) if n_eq > 0 else torch.zeros(batch_size, 0, device=device, dtype=dtype)
-        lam = torch.stack([to_torch(li, device, dtype) for li in lam_list]) if n_ineq > 0 else torch.zeros(batch_size, 0, device=device, dtype=dtype)
-        active_ineq = torch.stack([torch.tensor(ai, device=device) for ai in active_ineq_list]) if n_ineq > 0 else torch.zeros(batch_size, 0, dtype=torch.bool, device=device)
+        nu = (
+            torch.stack([to_torch(ni, device, dtype) for ni in nu_list])
+            if n_eq > 0
+            else torch.zeros(batch_size, 0, device=device, dtype=dtype)
+        )
+        lam = (
+            torch.stack([to_torch(li, device, dtype) for li in lam_list])
+            if n_ineq > 0
+            else torch.zeros(batch_size, 0, device=device, dtype=dtype)
+        )
+        active_ineq = (
+            torch.stack([torch.tensor(ai, device=device) for ai in active_ineq_list])
+            if n_ineq > 0
+            else torch.zeros(batch_size, 0, dtype=torch.bool, device=device)
+        )
         active_lb = torch.stack([torch.tensor(ai, device=device) for ai in active_lb_list])
         active_ub = torch.stack([torch.tensor(ai, device=device) for ai in active_ub_list])
 
@@ -303,11 +326,11 @@ class QPFunction(Function):
             active_ub = active_ub.squeeze(0)
 
         sol_info = {
-            'nu': nu,
-            'lam': lam,
-            'active_ineq': active_ineq,
-            'active_lb': active_lb,
-            'active_ub': active_ub,
+            "nu": nu,
+            "lam": lam,
+            "active_ineq": active_ineq,
+            "active_lb": active_lb,
+            "active_ub": active_ub,
         }
 
         return x, sol_info
@@ -333,9 +356,8 @@ class QPFunction(Function):
         - grad_h = -d_λ (for active constraints)
         - grad_G = -d_λ ⊗ x (for active constraints)
         """
-        (P, q, A, b, G, h, lb, ub, x, 
-         nu, lam, active_ineq, active_lb, active_ub) = ctx.saved_tensors
-        
+        P, q, A, b, G, h, lb, ub, x, nu, lam, active_ineq, active_lb, active_ub = ctx.saved_tensors
+
         is_batched = ctx.is_batched
         n = ctx.n
         n_eq = ctx.n_eq
@@ -353,13 +375,23 @@ class QPFunction(Function):
 
             for i in range(batch_size):
                 grads_i = QPFunction._backward_single(
-                    P[i], q[i], A[i] if A is not None else None, 
+                    P[i],
+                    q[i],
+                    A[i] if A is not None else None,
                     b[i] if b is not None else None,
-                    G[i] if G is not None else None, 
+                    G[i] if G is not None else None,
                     h[i] if h is not None else None,
-                    lb[i], ub[i], x[i], nu[i], lam[i],
-                    active_ineq[i], active_lb[i], active_ub[i],
-                    grad_x[i], n_eq, n_ineq
+                    lb[i],
+                    ub[i],
+                    x[i],
+                    nu[i],
+                    lam[i],
+                    active_ineq[i],
+                    active_lb[i],
+                    active_ub[i],
+                    grad_x[i],
+                    n_eq,
+                    n_ineq,
                 )
                 if grad_P is not None:
                     grad_P[i] = grads_i[0]
@@ -375,9 +407,23 @@ class QPFunction(Function):
                     grad_h[i] = grads_i[5]
         else:
             grads = QPFunction._backward_single(
-                P, q, A, b, G, h, lb, ub, x, nu, lam,
-                active_ineq, active_lb, active_ub, grad_x,
-                n_eq, n_ineq
+                P,
+                q,
+                A,
+                b,
+                G,
+                h,
+                lb,
+                ub,
+                x,
+                nu,
+                lam,
+                active_ineq,
+                active_lb,
+                active_ub,
+                grad_x,
+                n_eq,
+                n_ineq,
             )
             grad_P = grads[0] if P.requires_grad else None
             grad_q = grads[1] if q.requires_grad else None
@@ -393,8 +439,11 @@ class QPFunction(Function):
             grad_b,
             grad_G,
             grad_h,
-            None, None,  # lb, ub (could add later)
-            None, None, None,  # max_iters, eps, verbose
+            None,
+            None,  # lb, ub (could add later)
+            None,
+            None,
+            None,  # max_iters, eps, verbose
         )
 
     @staticmethod
@@ -416,11 +465,12 @@ class QPFunction(Function):
         grad_x: Tensor,
         n_eq: int,
         n_ineq: int,
-    ) -> Tuple[Tensor, Tensor, Optional[Tensor], Optional[Tensor], 
-               Optional[Tensor], Optional[Tensor]]:
+    ) -> Tuple[
+        Tensor, Tensor, Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]
+    ]:
         """
         Compute gradients for a single QP via adjoint KKT system.
-        
+
         This implements full implicit differentiation through the KKT conditions.
         """
         n = x.shape[0]
@@ -456,7 +506,7 @@ class QPFunction(Function):
         # Build reduced KKT matrix
         free_idx = free.nonzero(as_tuple=True)[0]
         P_ff = P[free_idx][:, free_idx]
-        
+
         # Size of KKT system
         kkt_size = n_free + n_eq + n_active_ineq
         KKT = torch.zeros(kkt_size, kkt_size, device=device, dtype=dtype)
@@ -468,16 +518,16 @@ class QPFunction(Function):
         # Fill A blocks (equality constraints)
         if n_eq > 0:
             A_f = A[:, free_idx]
-            KKT[n_free:n_free+n_eq, :n_free] = A_f
-            KKT[:n_free, n_free:n_free+n_eq] = A_f.T
+            KKT[n_free : n_free + n_eq, :n_free] = A_f
+            KKT[:n_free, n_free : n_free + n_eq] = A_f.T
 
         # Fill G blocks (active inequality constraints)
         if n_active_ineq > 0:
             active_idx = active_ineq.nonzero(as_tuple=True)[0]
             G_act_f = G[active_idx][:, free_idx]
             row_start = n_free + n_eq
-            KKT[row_start:row_start+n_active_ineq, :n_free] = G_act_f
-            KKT[:n_free, row_start:row_start+n_active_ineq] = G_act_f.T
+            KKT[row_start : row_start + n_active_ineq, :n_free] = G_act_f
+            KKT[:n_free, row_start : row_start + n_active_ineq] = G_act_f.T
 
         # RHS: grad_x on free variables
         rhs[:n_free] = grad_x[free_idx]
@@ -493,8 +543,14 @@ class QPFunction(Function):
 
         # Extract components
         d_x_free = sol[:n_free]
-        d_nu = sol[n_free:n_free+n_eq] if n_eq > 0 else torch.zeros(0, device=device, dtype=dtype)
-        d_lam_act = sol[n_free+n_eq:] if n_active_ineq > 0 else torch.zeros(0, device=device, dtype=dtype)
+        d_nu = (
+            sol[n_free : n_free + n_eq] if n_eq > 0 else torch.zeros(0, device=device, dtype=dtype)
+        )
+        d_lam_act = (
+            sol[n_free + n_eq :]
+            if n_active_ineq > 0
+            else torch.zeros(0, device=device, dtype=dtype)
+        )
 
         # Expand d_x to full size
         d_x = torch.zeros(n, device=device, dtype=dtype)
@@ -522,7 +578,7 @@ class QPFunction(Function):
         if n_ineq > 0:
             grad_h_out = torch.zeros(n_ineq, device=device, dtype=dtype)
             grad_G_out = torch.zeros(n_ineq, n, device=device, dtype=dtype)
-            
+
             if n_active_ineq > 0:
                 active_idx = active_ineq.nonzero(as_tuple=True)[0]
                 # grad_h[active] = -d_lam_act
@@ -540,7 +596,7 @@ class QPFunction(Function):
 class BatchQPFunction(Function):
     """
     Optimized batched QP solving with parallel GPU execution.
-    
+
     This function is optimized for solving many QPs in parallel,
     leveraging GPU parallelism in both forward and backward passes.
     """
@@ -550,14 +606,14 @@ class BatchQPFunction(Function):
         ctx,
         P: Tensor,  # (batch, n, n)
         q: Tensor,  # (batch, n)
-        lb: Tensor, # (batch, n)
-        ub: Tensor, # (batch, n)
+        lb: Tensor,  # (batch, n)
+        ub: Tensor,  # (batch, n)
         max_iters: int,
         eps: float,
     ) -> Tensor:
         """
         Solve batch of box-constrained QPs.
-        
+
         min (1/2)x'Px + q'x  s.t. lb <= x <= ub
         """
         device, dtype = q.device, q.dtype
@@ -566,6 +622,7 @@ class BatchQPFunction(Function):
         # Solve each QP
         x_list = []
         from scipy import sparse
+
         from .. import solve as cuprox_solve
 
         for i in range(batch_size):
@@ -607,7 +664,7 @@ class BatchQPFunction(Function):
 
         # For box-constrained QP, the backward is simpler
         # We use active set approach per sample
-        
+
         grad_P = torch.zeros_like(P) if P.requires_grad else None
         grad_q = torch.zeros_like(q) if q.requires_grad else None
 
@@ -647,7 +704,7 @@ class LPFunction(Function):
 
     Note: LP gradients are approximate since LP solutions
     are typically at vertices where the solution is non-smooth.
-    
+
     For better gradient behavior, consider adding a small
     quadratic regularization (converting to QP).
     """
@@ -776,7 +833,7 @@ class LPFunction(Function):
             # For active equality constraints, use sensitivity analysis
             # This is approximate for LP
             grad_A = torch.zeros_like(A)
-            
+
         if b is not None and b.requires_grad:
             grad_b = torch.zeros_like(b)
 
@@ -790,8 +847,11 @@ class LPFunction(Function):
             grad_b,
             grad_G,
             grad_h,
-            None, None,  # lb, ub
-            None, None, None,  # max_iters, eps, verbose
+            None,
+            None,  # lb, ub
+            None,
+            None,
+            None,  # max_iters, eps, verbose
         )
 
 
@@ -1008,6 +1068,7 @@ def solve_qp_with_duals(
 
     # Solve QP
     from scipy import sparse
+
     from .. import solve as cuprox_solve
     from .utils import to_numpy, to_torch
 
@@ -1081,7 +1142,7 @@ def solve_qp_with_duals(
         slack = h - G @ x
         active_ineq = slack.abs() < eps_active
         lam = torch.zeros(n_ineq, device=device, dtype=dtype)
-        
+
         if active_ineq.any():
             G_act = G[active_ineq]
             residual = P @ x + q
@@ -1090,7 +1151,7 @@ def solve_qp_with_duals(
             try:
                 lam_act = -torch.linalg.lstsq(G_act.T, residual).solution
                 lam[active_ineq] = torch.clamp(lam_act, min=0)
-            except:
+            except Exception:
                 pass
     else:
         lam = torch.zeros(0, device=device, dtype=dtype)
@@ -1099,13 +1160,13 @@ def solve_qp_with_duals(
     # Bound duals (from KKT stationarity)
     lam_lb = torch.zeros(n, device=device, dtype=dtype)
     lam_ub = torch.zeros(n, device=device, dtype=dtype)
-    
+
     residual = P @ x + q
     if n_eq > 0:
         residual = residual + A.T @ nu
     if n_ineq > 0:
         residual = residual + G.T @ lam
-    
+
     # At lower bound: residual = -lam_lb (lam_lb >= 0)
     lam_lb[active_lb] = torch.clamp(-residual[active_lb], min=0)
     # At upper bound: residual = lam_ub (lam_ub >= 0)

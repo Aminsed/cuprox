@@ -81,3 +81,20 @@ endif()
 # ============================================================================
 
 add_library(cuprox::core ALIAS cuprox_core)
+
+# cuSPARSE in CUDA 12 has an undeclared link-time dependency on nvJitLink.
+# Without this the link fails with undefined __nvJitLink* symbols.
+if(CUPROX_HAS_CUDA AND CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.0)
+    if(TARGET CUDA::nvJitLink)
+        target_link_libraries(cuprox_core PUBLIC CUDA::nvJitLink)
+    else()
+        # Older CMake does not define the imported target, so find it directly.
+        find_library(CUPROX_NVJITLINK nvJitLink
+            HINTS ${CUDAToolkit_LIBRARY_DIR}
+                  ${CUDAToolkit_TARGET_DIR}/lib64
+                  ${CUDAToolkit_TARGET_DIR}/lib)
+        if(CUPROX_NVJITLINK)
+            target_link_libraries(cuprox_core PUBLIC ${CUPROX_NVJITLINK})
+        endif()
+    endif()
+endif()

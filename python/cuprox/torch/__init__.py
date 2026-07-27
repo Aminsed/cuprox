@@ -117,27 +117,27 @@ See Also
 """
 
 from .functions import (
+    BatchQPFunction,
+    LPFunction,
     # Autograd functions
     QPFunction,
-    LPFunction,
-    BatchQPFunction,
+    # Data structures
+    QPSolution,
+    solve_lp,
     # Functional API
     solve_qp,
     solve_qp_batch,
-    solve_lp,
     solve_qp_with_duals,
-    # Data structures
-    QPSolution,
 )
 from .layers import (
-    # Basic layers
-    QPLayer,
+    BatchQPLayer,
+    DecisionFocusedLayer,
     LPLayer,
     # Advanced layers
     OptNetLayer,
     ParametricQPLayer,
-    BatchQPLayer,
-    DecisionFocusedLayer,
+    # Basic layers
+    QPLayer,
 )
 
 __all__ = [

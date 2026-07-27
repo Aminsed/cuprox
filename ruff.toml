@@ -49,6 +49,11 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
+# Signatures fixed by an external API: torch.autograd.Function.backward must
+# accept every input its forward took, and a scipy `jac` callback must accept x
+# even when the Jacobian is constant.
+"python/cuprox/torch/functions.py" = ["ARG004"]
+"python/cuprox/solver.py" = ["ARG005"]
 "tests/**/*.py" = [
     "ARG",    # Unused arguments in tests are fine
     "S101",   # asserts in tests are fine
