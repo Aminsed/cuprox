@@ -416,13 +416,26 @@ class Portfolio:
         P = sparse.csr_matrix(self._cov)
         q = np.zeros(n)
 
-        # Constraint: (μ-rf)'y = 1
-        A = sparse.csr_matrix(excess_returns.reshape(1, -1))
+        # Constraint: (mu-rf)'y = 1.
+        #
+        # Normalise the excess returns first. The substitution y = w/kappa is
+        # invariant to positive scaling of (mu-rf) -- y rescales inversely and
+        # w = y/sum(y) is unchanged -- but the raw values are daily excess
+        # returns of order 1e-3, which forces y to order 1e3 against a
+        # covariance of order 1e-4. A first-order method has no chance on a
+        # problem scaled that badly, and ADMM here does not equilibrate.
+        scale = np.linalg.norm(excess_returns)
+        if scale <= 0:
+            return self._optimize_min_variance(max_iters, tolerance, verbose)
+        A = sparse.csr_matrix((excess_returns / scale).reshape(1, -1))
         b = np.array([1.0])
 
         # Bounds: y >= 0 (scaled version of w >= 0)
         lb = np.zeros(n)
-        ub = np.full(n, 1e10)  # Large upper bound
+        # y is only defined up to positive scaling, so it genuinely has no upper
+        # bound. 1e10 used to stand in for that, which became a real constraint
+        # row once variable bounds started being enforced.
+        ub = np.full(n, np.inf)
 
         result = solve(
             c=q,

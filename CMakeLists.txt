@@ -108,7 +108,29 @@ add_subdirectory(src/cuprox)
 
 if(CUPROX_BUILD_PYTHON)
     find_package(Python 3.9 COMPONENTS Interpreter Development.Module REQUIRED)
-    find_package(pybind11 CONFIG QUIET)
+    # pybind11 >= 2.12 is a hard requirement, not a preference.
+    #
+    # Earlier releases read NumPy's internal array-descriptor layout, which
+    # changed in NumPy 2.0. Built against NumPy >= 2 they hand back arrays with
+    # a stride of 0, so every element aliases element 0. cuProx shipped exactly
+    # that: solutions came back as x[0] repeated while the objective (computed
+    # in C++) stayed correct, which is about the hardest version of the bug to
+    # notice. The floor below is what stops it recurring.
+    set(CUPROX_MIN_PYBIND11 2.12)
+    find_package(pybind11 ${CUPROX_MIN_PYBIND11} CONFIG QUIET)
+
+    if(NOT pybind11_FOUND AND Python_EXECUTABLE)
+        # Prefer the copy in the active interpreter before downloading one.
+        execute_process(
+            COMMAND "${Python_EXECUTABLE}" -c
+                    "import pybind11; print(pybind11.get_cmake_dir())"
+            OUTPUT_VARIABLE _pybind_dir RESULT_VARIABLE _pybind_rc
+            ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(_pybind_rc EQUAL 0 AND _pybind_dir)
+            find_package(pybind11 ${CUPROX_MIN_PYBIND11} CONFIG QUIET
+                         PATHS "${_pybind_dir}" NO_DEFAULT_PATH)
+        endif()
+    endif()
     
     if(NOT pybind11_FOUND)
         message(STATUS "pybind11 not found. Will be fetched.")
@@ -116,7 +138,7 @@ if(CUPROX_BUILD_PYTHON)
         FetchContent_Declare(
             pybind11
             GIT_REPOSITORY https://github.com/pybind/pybind11.git
-            GIT_TAG v2.11.1
+            GIT_TAG v2.13.6
         )
         FetchContent_MakeAvailable(pybind11)
     endif()

@@ -112,6 +112,10 @@ private:
     DeviceVector<T> Ax_;      // A * x
     DeviceVector<T> Aty_;     // A^T * y
     DeviceVector<T> temp_;
+    // Row-scaled copies of the constraint bounds, used when Ruiz scaling is
+    // on so the caller's l and u are never modified.
+    DeviceVector<T> l_scaled_;
+    DeviceVector<T> u_scaled_;
     
     // Problem data (may be scaled)
     CsrMatrix<T>* A_ = nullptr;

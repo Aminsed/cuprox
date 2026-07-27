@@ -28,12 +28,12 @@ except ImportError:
     nn = type("Module", (), {})  # Placeholder
 
 from .functions import (
-    LPFunction, 
-    QPFunction, 
     BatchQPFunction,
+    LPFunction,
+    QPFunction,
+    QPSolution,
     solve_qp,
     solve_qp_batch,
-    QPSolution,
 )
 from .utils import check_torch_available
 
@@ -144,7 +144,7 @@ class QPLayer(nn.Module if HAS_TORCH else object):
                 lb = torch.full((n,), -1e20, device=device, dtype=dtype)
         elif is_batched and lb.dim() == 1:
             lb = lb.unsqueeze(0).expand(q.shape[0], -1)
-            
+
         if ub is None:
             if is_batched:
                 ub = torch.full((q.shape[0], n), 1e20, device=device, dtype=dtype)
@@ -345,8 +345,10 @@ class OptNetLayer(nn.Module if HAS_TORCH else object):
         return z
 
     def extra_repr(self) -> str:
-        return (f"n_features={self.n_features}, n_vars={self.n_vars}, "
-                f"n_eq={self.n_eq}, n_ineq={self.n_ineq}")
+        return (
+            f"n_features={self.n_features}, n_vars={self.n_vars}, "
+            f"n_eq={self.n_eq}, n_ineq={self.n_ineq}"
+        )
 
 
 class ParametricQPLayer(nn.Module if HAS_TORCH else object):
@@ -695,8 +697,8 @@ class DecisionFocusedLayer(nn.Module if HAS_TORCH else object):
             P = L @ L.transpose(-1, -2) + 1e-4 * torch.eye(self.n_vars, device=device)
             q = torch.zeros(batch_size, self.n_vars, device=device, dtype=dtype)
         else:  # both
-            q = pred[:, :self.n_vars]
-            L = pred[:, self.n_vars:].view(batch_size, self.n_vars, self.n_vars).tril()
+            q = pred[:, : self.n_vars]
+            L = pred[:, self.n_vars :].view(batch_size, self.n_vars, self.n_vars).tril()
             P = L @ L.transpose(-1, -2) + 1e-4 * torch.eye(self.n_vars, device=device)
 
         # Solve

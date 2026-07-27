@@ -4,8 +4,10 @@
 
 [build-system]
 requires = [
-    "scikit-build-core>=0.8",
-    "pybind11>=2.11",
+    "scikit-build-core>=0.10",
+    # 2.12 is the floor: earlier releases return stride-0 arrays under NumPy 2,
+    # which silently turned every solution vector into x[0] repeated.
+    "pybind11>=2.12",
     "numpy>=1.20",
 ]
 build-backend = "scikit_build_core.build"
@@ -19,12 +21,12 @@ name = "cuprox"
 version = "0.1.0"
 description = "GPU-accelerated LP/QP optimization solver using first-order proximal methods"
 readme = "README.md"
-license = {text = "Dual License: Non-Commercial Free / Commercial Paid"}
+license = {text = "MIT"}
 authors = [
-    {name = "cuProx Contributors"}
+    {name = "Amin Sedaghat", email = "amin32846@gmail.com"}
 ]
 maintainers = [
-    {name = "cuProx Contributors"}
+    {name = "Amin Sedaghat", email = "amin32846@gmail.com"}
 ]
 keywords = [
     "optimization",
@@ -39,7 +41,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: Other/Proprietary License",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
@@ -99,7 +101,8 @@ Issues = "https://github.com/Aminsed/cuprox/issues"
 
 [tool.scikit-build]
 cmake.build-type = "Release"
-cmake.verbose = false
+build.verbose = false
+minimum-version = "0.10"
 wheel.packages = ["python/cuprox"]
 wheel.license-files = ["LICENSE"]
 sdist.include = [

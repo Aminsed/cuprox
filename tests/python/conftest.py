@@ -2,6 +2,8 @@
 pytest configuration and fixtures for cuProx tests.
 """
 
+import pathlib
+
 import numpy as np
 import pytest
 
@@ -197,3 +199,34 @@ def requires_scipy():
     """Skip test if scipy is not available."""
     if not HAS_SCIPY:
         pytest.skip("scipy not available")
+
+
+# Suites that do not depend on which solver is underneath: pure Python API,
+# model construction, risk maths, imports. Everything else asserts on solver
+# behaviour -- statuses, iteration counts, achieved accuracy, training
+# convergence -- and the CPU fallback is a different solver (scipy), so those
+# cannot pass without a device.
+_SOLVER_INDEPENDENT = (
+    "test_import.py",
+    "test_model.py",
+    "test_finance_risk.py",
+    "test_mpc_dynamics.py",
+)
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip solver-dependent tests when there is no CUDA device.
+
+    Keeping the CPU job to the solver-independent suites makes a green run mean
+    something. Previously the whole suite ran against the scipy fallback and
+    passed, which is how a completely non-functional CUDA path went unnoticed.
+    """
+    import cuprox
+
+    if cuprox.__cuda_available__:
+        return
+    skip = pytest.mark.skip(reason="requires a CUDA device (running the CPU fallback)")
+    for item in items:
+        name = pathlib.Path(str(item.fspath)).name
+        if name not in _SOLVER_INDEPENDENT:
+            item.add_marker(skip)

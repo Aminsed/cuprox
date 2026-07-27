@@ -76,7 +76,6 @@ class TestFullWorkflow:
         # Results should be consistent (both are annualized)
         assert abs(result.volatility - risk_result.volatility) < 0.05
 
-    @pytest.mark.skip(reason="Efficient frontier computation unstable in CPU fallback solver")
     def test_efficient_frontier_workflow(self, realistic_returns):
         """Full efficient frontier workflow."""
         from cuprox.finance import EfficientFrontier
@@ -113,7 +112,6 @@ class TestFullWorkflow:
         assert weight_change < 1.0  # Total turnover < 100%
 
 
-@pytest.mark.skip(reason="EfficientFrontier tests unstable with CPU fallback solver")
 class TestEfficientFrontier:
     """Test efficient frontier computation."""
 
@@ -206,7 +204,6 @@ class TestRealisticScenarios:
         # Aggressive should have higher return and higher vol
         assert aggressive.expected_return >= conservative.expected_return - 0.01
 
-    @pytest.mark.skip(reason="Bound enforcement needs improvement in QP solver")
     def test_constrained_portfolio(self, realistic_returns):
         """Portfolio with weight constraints."""
         from cuprox.finance import Portfolio
@@ -235,7 +232,6 @@ class TestRealisticScenarios:
         assert abs(result.weights.sum() - 1.0) < 1e-3
 
 
-@pytest.mark.skip(reason="Performance tests require GPU solver for reliability")
 class TestPerformance:
     """Performance tests."""
 
@@ -284,7 +280,6 @@ class TestPerformance:
         assert len(frontier) > 0
 
 
-@pytest.mark.skip(reason="Edge case tests unstable with CPU fallback solver")
 class TestEdgeCases:
     """Edge cases and error handling."""
 
