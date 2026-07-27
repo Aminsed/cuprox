@@ -19,7 +19,6 @@ import cuprox
 from cuprox import Model, Status, solve
 from cuprox.exceptions import DimensionError, InvalidInputError
 
-
 # --------------------------------------------------------------------------
 # The GPU path
 # --------------------------------------------------------------------------
@@ -58,8 +57,13 @@ def test_gpu_failure_is_not_silently_swallowed(monkeypatch):
 
     monkeypatch.setattr(S, "_solve_gpu", boom)
     with pytest.raises(RuntimeError, match="synthetic GPU failure"):
-        solve(c=np.array([1.0, 1.0]), A=sparse.csr_matrix(np.array([[1.0, 1.0]])),
-              b=np.array([1.0]), lb=np.zeros(2), ub=np.full(2, np.inf))
+        solve(
+            c=np.array([1.0, 1.0]),
+            A=sparse.csr_matrix(np.array([[1.0, 1.0]])),
+            b=np.array([1.0]),
+            lb=np.zeros(2),
+            ub=np.full(2, np.inf),
+        )
 
 
 # --------------------------------------------------------------------------
@@ -78,10 +82,15 @@ def test_solution_vector_is_not_a_constant():
     n, m = 6, 4
     A = rng.random((m, n))
     c = -rng.random(n)
-    r = solve(c=c, A=sparse.csr_matrix(A),
-              constraint_l=np.full(m, 0.5), constraint_u=np.full(m, 3.0),
-              lb=np.zeros(n), ub=np.full(n, 10.0),
-              params={"tolerance": 1e-8, "max_iterations": 200_000})
+    r = solve(
+        c=c,
+        A=sparse.csr_matrix(A),
+        constraint_l=np.full(m, 0.5),
+        constraint_u=np.full(m, 3.0),
+        lb=np.zeros(n),
+        ub=np.full(n, 10.0),
+        params={"tolerance": 1e-8, "max_iterations": 200_000},
+    )
     x = np.asarray(r.x)
     assert x.strides == (x.itemsize,), "returned array has degenerate strides"
     assert np.std(x) > 0
@@ -102,11 +111,15 @@ def test_lp_honours_inequality_rows():
     equality gives a visibly different answer.
     """
     A = sparse.csr_matrix(np.array([[1.0, 2.0], [3.0, 1.0], [1.0, 1.0]]))
-    r = solve(c=np.array([-1.0, -1.0]), A=A,
-              constraint_l=np.full(3, -np.inf),
-              constraint_u=np.array([10.0, 15.0, 100.0]),
-              lb=np.zeros(2), ub=np.full(2, np.inf),
-              params={"tolerance": 1e-8, "max_iterations": 200_000})
+    r = solve(
+        c=np.array([-1.0, -1.0]),
+        A=A,
+        constraint_l=np.full(3, -np.inf),
+        constraint_u=np.array([10.0, 15.0, 100.0]),
+        lb=np.zeros(2),
+        ub=np.full(2, np.inf),
+        params={"tolerance": 1e-8, "max_iterations": 200_000},
+    )
     assert r.status is Status.OPTIMAL
     np.testing.assert_allclose(np.asarray(r.x), [4.0, 3.0], atol=1e-3)
 
@@ -122,9 +135,16 @@ def test_qp_honours_variable_bounds():
     P = M @ M.T + np.eye(n) * 0.5
     lb = np.zeros(n)
     ub = np.full(n, 10.0)
-    r = solve(c=-rng.random(n), P=sparse.csr_matrix(P), A=sparse.csr_matrix(A),
-              constraint_l=np.full(m, 0.5), constraint_u=np.full(m, 3.0),
-              lb=lb, ub=ub, params={"tolerance": 1e-8, "max_iterations": 200_000})
+    r = solve(
+        c=-rng.random(n),
+        P=sparse.csr_matrix(P),
+        A=sparse.csr_matrix(A),
+        constraint_l=np.full(m, 0.5),
+        constraint_u=np.full(m, 3.0),
+        lb=lb,
+        ub=ub,
+        params={"tolerance": 1e-8, "max_iterations": 200_000},
+    )
     x = np.asarray(r.x)
     assert np.all(x >= lb - 1e-9)
     assert np.all(x <= ub + 1e-9)
@@ -137,10 +157,16 @@ def test_qp_accepts_more_constraints_than_variables(m: int, n: int):
     rng = np.random.default_rng(m * 100 + n)
     A = sparse.csr_matrix(rng.standard_normal((m, n)))
     P = sparse.csr_matrix(np.eye(n))
-    r = solve(c=rng.standard_normal(n), P=P, A=A,
-              constraint_l=np.full(m, -1.0), constraint_u=np.full(m, 1.0),
-              lb=np.full(n, -10.0), ub=np.full(n, 10.0),
-              params={"tolerance": 1e-6, "max_iterations": 50_000})
+    r = solve(
+        c=rng.standard_normal(n),
+        P=P,
+        A=A,
+        constraint_l=np.full(m, -1.0),
+        constraint_u=np.full(m, 1.0),
+        lb=np.full(n, -10.0),
+        ub=np.full(n, 10.0),
+        params={"tolerance": 1e-6, "max_iterations": 50_000},
+    )
     assert r.status in (Status.OPTIMAL, Status.MAX_ITERATIONS)
     assert np.isfinite(r.objective)
 
@@ -168,8 +194,10 @@ def test_model_solve_accepts_warm_start():
     ("kwargs", "exc"),
     [
         ({"c": np.array([1.0, np.nan])}, InvalidInputError),
-        ({"c": np.array([1.0, 2.0]), "lb": np.array([5.0, 0.0]),
-          "ub": np.array([3.0, 10.0])}, InvalidInputError),
+        (
+            {"c": np.array([1.0, 2.0]), "lb": np.array([5.0, 0.0]), "ub": np.array([3.0, 10.0])},
+            InvalidInputError,
+        ),
     ],
 )
 def test_bad_input_is_rejected(kwargs, exc):
@@ -180,9 +208,11 @@ def test_bad_input_is_rejected(kwargs, exc):
 
 def test_dimension_mismatch_is_rejected():
     with pytest.raises(DimensionError):
-        solve(c=np.array([1.0, 2.0]),
-              A=sparse.csr_matrix(np.array([[1.0, 2.0], [3.0, 4.0]])),
-              b=np.array([10.0]))
+        solve(
+            c=np.array([1.0, 2.0]),
+            A=sparse.csr_matrix(np.array([[1.0, 2.0], [3.0, 4.0]])),
+            b=np.array([10.0]),
+        )
 
 
 # --------------------------------------------------------------------------
@@ -205,9 +235,9 @@ def test_badly_scaled_max_sharpe_converges():
     r[:, 2] += 0.0001
 
     port = Portfolio(r)
-    assert (port.expected_returns > 0).any() and (port.expected_returns < 0).any(), (
-        "fixture must contain both signs for this regression to be meaningful"
-    )
+    assert (port.expected_returns > 0).any() and (
+        port.expected_returns < 0
+    ).any(), "fixture must contain both signs for this regression to be meaningful"
     best = port.optimize(method="max_sharpe")
     assert best.status == "optimal"
     # A max-Sharpe portfolio must not beat itself with minimum variance.

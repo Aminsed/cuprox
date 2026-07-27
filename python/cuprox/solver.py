@@ -1,12 +1,14 @@
 """cuProx Solver Interface."""
 
 from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 from scipy import sparse
-from .exceptions import InvalidInputError, DimensionError
-from .result import SolveResult, Status
 
+from .exceptions import DimensionError, InvalidInputError
+from .result import SolveResult, Status
 
 # The extension reports status as a string; Status values happen to use the same
 # spellings, so the mapping is a lookup rather than a translation table. The
@@ -31,12 +33,13 @@ def solve(
 ) -> SolveResult:
     """Solve LP or QP."""
     import time
+
     start_time = time.perf_counter()
     params = params or {}
-    max_iters = params.get('max_iterations', params.get('max_iters', 10000))
-    tol = params.get('tolerance', params.get('tol', 1e-4))
-    verbose = params.get('verbose', False)
-    device = params.get('device', 'gpu')
+    max_iters = params.get("max_iterations", params.get("max_iters", 10000))
+    tol = params.get("tolerance", params.get("tol", 1e-4))
+    verbose = params.get("verbose", False)
+    device = params.get("device", "gpu")
 
     c = np.asarray(c, dtype=np.float64).ravel()
     n = len(c)
@@ -77,15 +80,23 @@ def solve(
         constr_l = np.full(m, -np.inf)
         constr_u = np.full(m, np.inf)
         for i, sense in enumerate(constraint_senses):
-            if sense in ('=', '=='):
+            if sense in ("=", "=="):
                 constr_l[i] = constr_u[i] = b[i]
-            elif sense in ('<=', '<'):
+            elif sense in ("<=", "<"):
                 constr_u[i] = b[i]
-            elif sense in ('>=', '>'):
+            elif sense in (">=", ">"):
                 constr_l[i] = b[i]
     elif constraint_l is not None or constraint_u is not None:
-        constr_l = np.asarray(constraint_l, dtype=np.float64) if constraint_l is not None else np.full(m, -np.inf)
-        constr_u = np.asarray(constraint_u, dtype=np.float64) if constraint_u is not None else np.full(m, np.inf)
+        constr_l = (
+            np.asarray(constraint_l, dtype=np.float64)
+            if constraint_l is not None
+            else np.full(m, -np.inf)
+        )
+        constr_u = (
+            np.asarray(constraint_u, dtype=np.float64)
+            if constraint_u is not None
+            else np.full(m, np.inf)
+        )
     elif b is not None:
         b = np.asarray(b, dtype=np.float64).ravel()
         if len(b) != m:
@@ -103,11 +114,8 @@ def solve(
             raise DimensionError(f"P must be ({n},{n}), got {P.shape}")
 
     from . import _core
-    use_gpu = (
-        _core is not None
-        and getattr(_core, "cuda_available", False)
-        and device != "cpu"
-    )
+
+    use_gpu = _core is not None and getattr(_core, "cuda_available", False) and device != "cpu"
 
     if use_gpu:
         result = _solve_gpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_qp)
@@ -136,8 +144,12 @@ def _solve_gpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
     big = 1e20
     lb_d = np.where(np.isneginf(lb), -big, np.where(np.isposinf(lb), big, lb)).astype(np.float64)
     ub_d = np.where(np.isposinf(ub), big, np.where(np.isneginf(ub), -big, ub)).astype(np.float64)
-    l_d = np.where(np.isneginf(constr_l), -big, np.where(np.isposinf(constr_l), big, constr_l)).astype(np.float64)
-    u_d = np.where(np.isposinf(constr_u), big, np.where(np.isneginf(constr_u), -big, constr_u)).astype(np.float64)
+    l_d = np.where(
+        np.isneginf(constr_l), -big, np.where(np.isposinf(constr_l), big, constr_l)
+    ).astype(np.float64)
+    u_d = np.where(
+        np.isposinf(constr_u), big, np.where(np.isneginf(constr_u), -big, constr_u)
+    ).astype(np.float64)
     l_d = np.ascontiguousarray(np.atleast_1d(l_d))
     u_d = np.ascontiguousarray(np.atleast_1d(u_d))
 
@@ -175,21 +187,39 @@ def _solve_gpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
             P_row_offsets=P_csr.indptr.astype(np.int32),
             P_col_indices=P_csr.indices.astype(np.int32),
             P_values=P_csr.data.astype(np.float64),
-            A_row_offsets=A_ro, A_col_indices=A_ci, A_values=A_va,
+            A_row_offsets=A_ro,
+            A_col_indices=A_ci,
+            A_values=A_va,
             q=np.ascontiguousarray(c, dtype=np.float64),
-            l=l_aug, u=u_aug,
+            l=l_aug,
+            u=u_aug,
             # The box is already in A, so leave the solver's own box inert.
-            var_lb=np.full(n, -big), var_ub=np.full(n, big),
-            P_n=n, A_m=m_aug, A_n=n,
-            max_iters=max_iters, eps_abs=tol, eps_rel=tol, verbose=verbose,
+            var_lb=np.full(n, -big),
+            var_ub=np.full(n, big),
+            P_n=n,
+            A_m=m_aug,
+            A_n=n,
+            max_iters=max_iters,
+            eps_abs=tol,
+            eps_rel=tol,
+            verbose=verbose,
         )
     else:
         out = _core.solve_lp_pdhg(
-            row_offsets=A_ro, col_indices=A_ci, values=A_va,
+            row_offsets=A_ro,
+            col_indices=A_ci,
+            values=A_va,
             c=np.ascontiguousarray(c, dtype=np.float64),
-            l=l_d, u=u_d, lb=lb_d, ub=ub_d,
-            num_rows=m, num_cols=n,
-            max_iters=max_iters, eps_abs=tol, eps_rel=tol, verbose=verbose,
+            l=l_d,
+            u=u_d,
+            lb=lb_d,
+            ub=ub_d,
+            num_rows=m,
+            num_cols=n,
+            max_iters=max_iters,
+            eps_abs=tol,
+            eps_rel=tol,
+            verbose=verbose,
         )
 
     # Variable bounds are enforced as rows of A, so they are satisfied only to
@@ -213,11 +243,12 @@ def _solve_gpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
 
 
 def _solve_cpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_qp):
-    n, m = len(c), A.shape[0] if hasattr(A, 'shape') and A.shape[0] > 0 else 0
+    n, m = len(c), A.shape[0] if hasattr(A, "shape") and A.shape[0] > 0 else 0
 
     if is_qp:
         try:
             from scipy.optimize import minimize
+
             P_dense = P.toarray() if sparse.issparse(P) else np.asarray(P)
             bounds = list(zip(lb, ub))
             constraints = []
@@ -226,29 +257,68 @@ def _solve_cpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
                 eq_mask = np.abs(constr_l - constr_u) < 1e-10
                 if eq_mask.any():
                     A_eq, b_eq = A_dense[eq_mask], constr_l[eq_mask]
-                    constraints.append({'type': 'eq', 'fun': lambda x, A=A_eq, b=b_eq: A @ x - b, 'jac': lambda x, A=A_eq: A})
+                    constraints.append(
+                        {
+                            "type": "eq",
+                            "fun": lambda x, A=A_eq, b=b_eq: A @ x - b,
+                            "jac": lambda x, A=A_eq: A,
+                        }
+                    )
                 ineq_mask = ~eq_mask
                 if ineq_mask.any():
                     A_ineq = A_dense[ineq_mask]
                     l_ineq, u_ineq = constr_l[ineq_mask], constr_u[ineq_mask]
                     if not np.all(np.isinf(l_ineq)):
-                        constraints.append({'type': 'ineq', 'fun': lambda x, A=A_ineq, l=l_ineq: A @ x - l, 'jac': lambda x, A=A_ineq: A})
+                        constraints.append(
+                            {
+                                "type": "ineq",
+                                "fun": lambda x, A=A_ineq, l=l_ineq: A @ x - l,
+                                "jac": lambda x, A=A_ineq: A,
+                            }
+                        )
                     if not np.all(np.isinf(u_ineq)):
-                        constraints.append({'type': 'ineq', 'fun': lambda x, A=A_ineq, u=u_ineq: u - A @ x, 'jac': lambda x, A=A_ineq: -A})
+                        constraints.append(
+                            {
+                                "type": "ineq",
+                                "fun": lambda x, A=A_ineq, u=u_ineq: u - A @ x,
+                                "jac": lambda x, A=A_ineq: -A,
+                            }
+                        )
             x0 = np.clip(np.zeros(n), lb, ub)
             x0 = np.where(np.isinf(lb), 0, x0)
             x0 = np.where(np.isinf(ub), x0, np.minimum(x0, ub))
-            result = minimize(lambda x: 0.5 * x @ P_dense @ x + c @ x, x0, method='SLSQP',
-                              jac=lambda x: P_dense @ x + c, bounds=bounds, constraints=constraints,
-                              options={'maxiter': max_iters, 'ftol': tol})
-            return SolveResult(status=Status.OPTIMAL if result.success else Status.MAX_ITERATIONS,
-                               objective=result.fun, x=result.x, y=np.zeros(m), iterations=result.nit, solve_time=0.0)
+            result = minimize(
+                lambda x: 0.5 * x @ P_dense @ x + c @ x,
+                x0,
+                method="SLSQP",
+                jac=lambda x: P_dense @ x + c,
+                bounds=bounds,
+                constraints=constraints,
+                options={"maxiter": max_iters, "ftol": tol},
+            )
+            return SolveResult(
+                status=Status.OPTIMAL if result.success else Status.MAX_ITERATIONS,
+                objective=result.fun,
+                x=result.x,
+                y=np.zeros(m),
+                iterations=result.nit,
+                solve_time=0.0,
+            )
         except Exception as e:
-            if verbose: print(f"scipy QP failed: {e}")
-            return SolveResult(status=Status.NUMERICAL_ERROR, objective=float('nan'), x=np.zeros(n), y=np.zeros(m), iterations=0, solve_time=0.0)
+            if verbose:
+                print(f"scipy QP failed: {e}")
+            return SolveResult(
+                status=Status.NUMERICAL_ERROR,
+                objective=float("nan"),
+                x=np.zeros(n),
+                y=np.zeros(m),
+                iterations=0,
+                solve_time=0.0,
+            )
     else:
         try:
             from scipy.optimize import linprog
+
             A_ub, b_ub, A_eq, b_eq = None, None, None, None
             if m > 0:
                 A_dense = A.toarray() if sparse.issparse(A) else np.asarray(A)
@@ -268,17 +338,45 @@ def _solve_cpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
                         rhs.append(-l_ineq[~np.isinf(l_ineq)])
                     if rows:
                         A_ub, b_ub = np.vstack(rows), np.concatenate(rhs)
-            bounds = [(l if not np.isinf(l) else None, u if not np.isinf(u) else None) for l, u in zip(lb, ub)]
-            result = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs',
-                             options={'maxiter': max_iters, 'tol': tol})
-            status_map = {0: Status.OPTIMAL, 1: Status.MAX_ITERATIONS, 2: Status.INFEASIBLE, 3: Status.UNBOUNDED}
-            return SolveResult(status=status_map.get(result.status, Status.NUMERICAL_ERROR),
-                               objective=result.fun if result.success else float('nan'),
-                               x=result.x if result.x is not None else np.zeros(n),
-                               y=np.zeros(m), iterations=getattr(result, 'nit', 0), solve_time=0.0)
+            bounds = [
+                (l if not np.isinf(l) else None, u if not np.isinf(u) else None)
+                for l, u in zip(lb, ub)
+            ]
+            result = linprog(
+                c,
+                A_ub=A_ub,
+                b_ub=b_ub,
+                A_eq=A_eq,
+                b_eq=b_eq,
+                bounds=bounds,
+                method="highs",
+                options={"maxiter": max_iters, "tol": tol},
+            )
+            status_map = {
+                0: Status.OPTIMAL,
+                1: Status.MAX_ITERATIONS,
+                2: Status.INFEASIBLE,
+                3: Status.UNBOUNDED,
+            }
+            return SolveResult(
+                status=status_map.get(result.status, Status.NUMERICAL_ERROR),
+                objective=result.fun if result.success else float("nan"),
+                x=result.x if result.x is not None else np.zeros(n),
+                y=np.zeros(m),
+                iterations=getattr(result, "nit", 0),
+                solve_time=0.0,
+            )
         except Exception as e:
-            if verbose: print(f"scipy LP failed: {e}")
-            return SolveResult(status=Status.NUMERICAL_ERROR, objective=float('nan'), x=np.zeros(n), y=np.zeros(m), iterations=0, solve_time=0.0)
+            if verbose:
+                print(f"scipy LP failed: {e}")
+            return SolveResult(
+                status=Status.NUMERICAL_ERROR,
+                objective=float("nan"),
+                x=np.zeros(n),
+                y=np.zeros(m),
+                iterations=0,
+                solve_time=0.0,
+            )
 
 
 def solve_batch(
@@ -318,10 +416,16 @@ def solve_batch(
 
     return [
         solve(
-            c=p.get("c"), A=p.get("A"), b=p.get("b"), P=p.get("P"),
-            lb=p.get("lb"), ub=p.get("ub"),
-            constraint_l=p.get("constraint_l"), constraint_u=p.get("constraint_u"),
-            constraint_senses=p.get("constraint_senses"), params=params,
+            c=p.get("c"),
+            A=p.get("A"),
+            b=p.get("b"),
+            P=p.get("P"),
+            lb=p.get("lb"),
+            ub=p.get("ub"),
+            constraint_l=p.get("constraint_l"),
+            constraint_u=p.get("constraint_u"),
+            constraint_senses=p.get("constraint_senses"),
+            params=params,
         )
         for p in problems
     ]
@@ -343,9 +447,11 @@ def _shares_structure(problems: List[Dict[str, Any]]) -> bool:
         A = p["A"].tocsr() if sparse.issparse(p["A"]) else sparse.csr_matrix(p["A"])
         if A.shape != A0.shape or A.nnz != A0.nnz:
             return False
-        if not (np.array_equal(A.indptr, A0.indptr)
-                and np.array_equal(A.indices, A0.indices)
-                and np.allclose(A.data, A0.data)):
+        if not (
+            np.array_equal(A.indptr, A0.indptr)
+            and np.array_equal(A.indices, A0.indices)
+            and np.allclose(A.data, A0.data)
+        ):
             return False
         if not _same_bounds(p, first):
             return False
@@ -385,9 +491,11 @@ def _try_batched_lp(
     k = len(problems)
 
     c_batch = np.ascontiguousarray(
-        np.stack([np.asarray(p["c"], dtype=np.float64).ravel() for p in problems]))
+        np.stack([np.asarray(p["c"], dtype=np.float64).ravel() for p in problems])
+    )
     b_batch = np.ascontiguousarray(
-        np.stack([np.asarray(p["b"], dtype=np.float64).ravel() for p in problems]))
+        np.stack([np.asarray(p["b"], dtype=np.float64).ravel() for p in problems])
+    )
     if c_batch.shape != (k, n) or b_batch.shape != (k, m):
         return None
 
@@ -403,8 +511,13 @@ def _try_batched_lp(
         row_offsets=A.indptr.astype(np.int32),
         col_indices=A.indices.astype(np.int32),
         values=A.data.astype(np.float64),
-        c_batch=c_batch, b_batch=b_batch, lb=lb_d, ub=ub_d,
-        batch_size=k, num_rows=m, num_cols=n,
+        c_batch=c_batch,
+        b_batch=b_batch,
+        lb=lb_d,
+        ub=ub_d,
+        batch_size=k,
+        num_rows=m,
+        num_cols=n,
         max_iters=params.get("max_iterations", params.get("max_iters", 5000)),
         eps_abs=params.get("tolerance", params.get("tol", 1e-5)),
         eps_rel=params.get("tolerance", params.get("tol", 1e-5)),
