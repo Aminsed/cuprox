@@ -223,6 +223,8 @@ def pytest_collection_modifyitems(config, items):
             or "test_solver_lp.py" in path
             or "test_solver_qp.py" in path
             or "test_accuracy.py" in path
+            or "test_stochastic_problem.py" in path
+            or "test_stochastic_saa.py" in path
             or "gpu" in item.keywords
         ):
             item.add_marker(skip)

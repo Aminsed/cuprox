@@ -204,6 +204,16 @@ jobs:
           method: network
           sub-packages: '["nvcc", "cudart", "cudart-dev", "cccl"]'
           non-cuda-sub-packages: '["libcublas", "libcublas-dev", "libcusparse", "libcusparse-dev"]'
+      # The toolkit action does not reliably place libnvJitLink, which cuSPARSE
+      # 12 needs at link time. Install it straight from the NVIDIA repo the
+      # action already configured.
+      - name: Install nvJitLink (CUDA 12 only)
+        if: startsWith(matrix.cuda, '12.')
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libnvjitlink-12-4 || true
+          ldconfig -p | grep -i nvjitlink || find /usr/local/cuda* -name 'libnvJitLink*' 2>/dev/null | head
+
       - name: Configure
         env:
           CUDAARCHS: "70;80;86"
