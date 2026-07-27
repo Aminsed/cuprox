@@ -144,7 +144,9 @@ void AdmmSolver<T>::initialize(QPProblem<T>& problem) {
     Aty_.resize(n_);
     Atz_.resize(n_);
     rhs_.resize(n_);
-    temp_.resize(std::max(m_, n_));
+    // temp_ only ever holds A^T * (something of length m), which is length n.
+    // Sizing it max(m, n) made cuSPARSE reject every problem with m > n.
+    temp_.resize(n_);
     
     // CG workspace
     cg_r_.resize(n_);
