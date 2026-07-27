@@ -207,6 +207,9 @@ jobs:
       - name: Configure
         env:
           CUDAARCHS: "70;80;86"
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCUPROX_BUILD_TESTS=ON -DCUPROX_BUILD_PYTHON=OFF
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCUPROX_BUILD_TESTS=ON -DCUPROX_BUILD_PYTHON=OFF \
+            -DCMAKE_EXE_LINKER_FLAGS="-L$CUDA_PATH/targets/x86_64-linux/lib ${{ matrix.linkflags }}"
       - name: Build
         run: cmake --build build -j
