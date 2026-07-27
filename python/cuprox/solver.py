@@ -384,22 +384,22 @@ def solve_batch(
     problems: List[Dict[str, Any]],
     params: Optional[Dict[str, Any]] = None,
 ) -> List[SolveResult]:
-    """Solve many problems, in one GPU launch where possible.
+    """Solve a list of problems, one after another.
 
-    Problems are solved one after another. A batched PDHG kernel exists and is
-    reachable with ``params={"batched": True}``, but it is **experimental and
-    currently slower and less reliable** than the sequential path: it reports
-    status through a `cudaMemset` that writes bytes rather than ints, its
-    convergence test ignores problem scale, and its residual is computed from
-    an aliased buffer. Until those are fixed the default stays sequential,
-    which is correct.
+    This is a convenience wrapper, not a parallel solver. A batched PDHG kernel
+    exists in the C++ sources but is not wired up: its sparse operator applied
+    the shared matrix in a Python-style loop that allocated scratch per problem
+    per iteration, making it slower than solving the problems individually, and
+    the obvious fix (one cusparseSpMM over the whole batch) does not yet pass
+    validation. Exposing it would mean shipping a path that is both slower and
+    unverified, so it stays out of the API until it earns its place.
 
     Parameters
     ----------
     problems : list of dict
         Each entry takes the same keys as :func:`solve`.
     params : dict, optional
-        Solver parameters, applied to every problem in the batch.
+        Solver parameters, applied to every problem.
 
     Returns
     -------
@@ -407,14 +407,6 @@ def solve_batch(
         One result per input problem, in order.
     """
     params = params or {}
-    if not problems:
-        return []
-
-    if params.get("batched"):
-        batched = _try_batched_lp(problems, params)
-        if batched is not None:
-            return batched
-
     return [
         solve(
             c=p.get("c"),
@@ -429,116 +421,4 @@ def solve_batch(
             params=params,
         )
         for p in problems
-    ]
-
-
-def _shares_structure(problems: List[Dict[str, Any]]) -> bool:
-    """True when every problem is an equality LP over the same A, lb and ub."""
-    first = problems[0]
-    if first.get("A") is None or first.get("b") is None:
-        return False
-    A0 = first["A"].tocsr() if sparse.issparse(first["A"]) else sparse.csr_matrix(first["A"])
-    for p in problems:
-        if p.get("P") is not None or p.get("constraint_senses") is not None:
-            return False
-        if p.get("constraint_l") is not None or p.get("constraint_u") is not None:
-            return False
-        if p.get("A") is None or p.get("b") is None or p.get("c") is None:
-            return False
-        A = p["A"].tocsr() if sparse.issparse(p["A"]) else sparse.csr_matrix(p["A"])
-        if A.shape != A0.shape or A.nnz != A0.nnz:
-            return False
-        if not (
-            np.array_equal(A.indptr, A0.indptr)
-            and np.array_equal(A.indices, A0.indices)
-            and np.allclose(A.data, A0.data)
-        ):
-            return False
-        if not _same_bounds(p, first):
-            return False
-    return True
-
-
-def _same_bounds(p: Dict[str, Any], first: Dict[str, Any]) -> bool:
-    for key in ("lb", "ub"):
-        a, b = p.get(key), first.get(key)
-        if (a is None) != (b is None):
-            return False
-        if a is not None and not np.allclose(np.ravel(a), np.ravel(b)):
-            return False
-    return True
-
-
-def _try_batched_lp(
-    problems: List[Dict[str, Any]],
-    params: Dict[str, Any],
-) -> Optional[List[SolveResult]]:
-    """Run the whole batch through one kernel, or return None if it does not fit.
-
-    Experimental; see solve_batch for the outstanding defects in the kernel.
-    """
-    from . import _core
-
-    if _core is None or not getattr(_core, "cuda_available", False):
-        return None
-    if params.get("device") == "cpu" or len(problems) < 2:
-        return None
-    if not hasattr(_core, "solve_batch_lp_pdhg") or not _shares_structure(problems):
-        return None
-
-    first = problems[0]
-    A = first["A"].tocsr() if sparse.issparse(first["A"]) else sparse.csr_matrix(first["A"])
-    m, n = A.shape
-    k = len(problems)
-
-    c_batch = np.ascontiguousarray(
-        np.stack([np.asarray(p["c"], dtype=np.float64).ravel() for p in problems])
-    )
-    b_batch = np.ascontiguousarray(
-        np.stack([np.asarray(p["b"], dtype=np.float64).ravel() for p in problems])
-    )
-    if c_batch.shape != (k, n) or b_batch.shape != (k, m):
-        return None
-
-    big = 1e20
-    lb = first.get("lb")
-    ub = first.get("ub")
-    lb = np.zeros(n) if lb is None else np.asarray(lb, dtype=np.float64).ravel()
-    ub = np.full(n, np.inf) if ub is None else np.asarray(ub, dtype=np.float64).ravel()
-    lb_d = np.where(np.isneginf(lb), -big, lb).astype(np.float64)
-    ub_d = np.where(np.isposinf(ub), big, ub).astype(np.float64)
-
-    out = _core.solve_batch_lp_pdhg(
-        row_offsets=A.indptr.astype(np.int32),
-        col_indices=A.indices.astype(np.int32),
-        values=A.data.astype(np.float64),
-        c_batch=c_batch,
-        b_batch=b_batch,
-        lb=lb_d,
-        ub=ub_d,
-        batch_size=k,
-        num_rows=m,
-        num_cols=n,
-        max_iters=params.get("max_iterations", params.get("max_iters", 5000)),
-        eps_abs=params.get("tolerance", params.get("tol", 1e-5)),
-        eps_rel=params.get("tolerance", params.get("tol", 1e-5)),
-        verbose=params.get("verbose", False),
-    )
-
-    xs = np.asarray(out["x"])
-    objs = np.asarray(out["objectives"])
-    stats = np.asarray(out["statuses"])
-    iters = np.asarray(out["iterations"])
-    per_problem = float(out["solve_time"]) / k
-    codes = list(Status)
-    return [
-        SolveResult(
-            status=codes[int(stats[i])] if 0 <= int(stats[i]) < len(codes) else Status.UNSOLVED,
-            objective=float(objs[i]),
-            x=np.clip(xs[i], lb, ub),
-            y=np.zeros(m),
-            iterations=int(iters[i]),
-            solve_time=per_problem,
-        )
-        for i in range(k)
     ]

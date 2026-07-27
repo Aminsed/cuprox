@@ -75,7 +75,7 @@ git clone https://github.com/Aminsed/cuprox.git
 cd cuprox
 
 # 2. Install the Python package
-pip install -e python/
+pip install .
 
 # 3. Verify installation
 python -c "import cuprox; print(f'Version: {cuprox.__version__}')"
@@ -134,7 +134,7 @@ cmake .. \
 
 ```bash
 # From project root
-pip install -e python/
+pip install .
 ```
 
 ### Step 4: Verify GPU Support
@@ -168,7 +168,7 @@ cd ..
 ### Step 2: Install with Development Dependencies
 
 ```bash
-pip install -e "python/[dev]"
+pip install -e ".[dev]"
 ```
 
 This installs additional tools:
@@ -350,7 +350,7 @@ If `cuprox.__cuda_available__` is `False` after building:
 3. **Reinstall cuprox:**
    ```bash
    pip uninstall cuprox
-   pip install -e python/
+   pip install .
    ```
 
 ### GPU Out of Memory

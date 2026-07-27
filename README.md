@@ -30,7 +30,7 @@ cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and
 |---------|-------------|
 | **Fast** | 10-100x speedup over CPU solvers on large problems |
 | **Focused** | LP and QP only — does one thing exceptionally well |
-| **Batch solving** | Sequential today; a batched kernel exists but is experimental (see below) |
+| **Batch solving** | Sequential today (see Known limitations) |
 | **ML-Ready** | PyTorch integration for differentiable optimization |
 | **Fallback** | Automatic CPU fallback if no GPU available |
 
@@ -167,10 +167,8 @@ problems = [
 results = cuprox.solve_batch(problems)
 ```
 
-`solve_batch` currently solves these **one after another**. A batched PDHG kernel
-exists and can be reached with `params={"batched": True}`, but it is experimental
-and at present both slower and less reliable than the sequential path, so it is
-not the default. See [Known limitations](#known-limitations).
+`solve_batch` solves these **one after another**. See
+[Known limitations](#known-limitations).
 
 ### Example 4: Quadratic Program (Portfolio Optimization)
 
@@ -330,9 +328,12 @@ Unlike interior-point methods (which require Cholesky factorization — poorly p
 
 ## Known limitations
 
-- **Batch solving is sequential.** The batched PDHG kernel is compiled and
-  reachable via `params={"batched": True}`, but its status reporting, convergence
-  test and residual computation all need work before it can be the default.
+- **Batch solving is sequential.** A batched PDHG kernel exists in the C++
+  sources but is not exposed. Its sparse operator applied the shared matrix in a
+  per-problem loop that allocated scratch inside the iteration, making it slower
+  than solving the problems individually; replacing that with a single
+  `cusparseSpMM` over the batch is the right fix but does not yet pass
+  validation. It is left unexposed rather than shipped unverified.
 - **ADMM does not equilibrate.** OSQP applies Ruiz scaling by default; cuProx
   does not for QP. Badly scaled problems can stall, and the fix is to scale the
   problem before handing it over. PDHG does support Ruiz scaling.

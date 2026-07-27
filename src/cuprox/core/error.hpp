@@ -205,6 +205,23 @@ private:
 /**
  * @brief Always-active check (for user-facing validation)
  */
+/**
+ * @brief Dimension invariant, checked in every build.
+ *
+ * CUPROX_ASSERT compiles away under NDEBUG, which is right for expensive
+ * checks and wrong for these. Sizing a workspace max(m, n) instead of n once
+ * made every problem with m > n fail deep inside cuSPARSE with "dimension
+ * mismatch", because the assertion that named the real cause was compiled out
+ * of the release build. An integer comparison in front of a kernel launch is
+ * free; use this for anything guarding a shape.
+ */
+#define CUPROX_CHECK_DIM(condition, message)                              \
+    do {                                                                  \
+        if (!(condition)) {                                               \
+            throw ::cuprox::DimensionError(message);                      \
+        }                                                                 \
+    } while (0)
+
 #define CUPROX_CHECK(condition, exception_type, message)                 \
     do {                                                                  \
         if (!(condition)) {                                               \

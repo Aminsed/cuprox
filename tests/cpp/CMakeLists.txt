@@ -59,4 +59,12 @@ if(CUPROX_HAS_CUDA)
         GTest::gtest_main
     )
     gtest_discover_tests(test_scaling)
+
+    # Shape-guard tests
+    add_executable(test_shape_guards test_shape_guards.cpp)
+    target_link_libraries(test_shape_guards PRIVATE
+        cuprox::core
+        GTest::gtest_main
+    )
+    gtest_discover_tests(test_shape_guards)
 endif()
