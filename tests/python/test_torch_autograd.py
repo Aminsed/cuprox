@@ -11,8 +11,8 @@ Tests:
 7. Edge cases and numerical stability
 """
 
-import pytest
 import numpy as np
+import pytest
 
 try:
     import torch
@@ -61,7 +61,7 @@ class TestQPForward:
 
         n = 5
         P = 2 * torch.eye(n, device=device, dtype=dtype)
-        q = torch.tensor([2., 4., 6., 8., 10.], device=device, dtype=dtype)
+        q = torch.tensor([2.0, 4.0, 6.0, 8.0, 10.0], device=device, dtype=dtype)
 
         x = solve_qp(P, q)
 
@@ -73,7 +73,7 @@ class TestQPForward:
         from cuprox.torch import solve_qp
 
         P = torch.eye(2, device=device, dtype=dtype)
-        q = torch.tensor([-10., -10.], device=device, dtype=dtype)  # Unconstrained: x* = [10, 10]
+        q = torch.tensor([-10.0, -10.0], device=device, dtype=dtype)  # Unconstrained: x* = [10, 10]
         lb = torch.zeros(2, device=device, dtype=dtype)
         ub = torch.ones(2, device=device, dtype=dtype)
 
@@ -94,7 +94,7 @@ class TestQPForward:
 
         x = solve_qp(P, q, A=A, b=b)
 
-        expected = torch.full((n,), 1/n, device=device, dtype=dtype)
+        expected = torch.full((n,), 1 / n, device=device, dtype=dtype)
         torch.testing.assert_close(x, expected, atol=1e-2, rtol=1e-2)
 
     def test_inequality_constrained(self, device, dtype):
@@ -102,9 +102,9 @@ class TestQPForward:
         from cuprox.torch import solve_qp
 
         P = torch.eye(2, device=device, dtype=dtype)
-        q = torch.tensor([-2., -2.], device=device, dtype=dtype)  # min ||x - [2,2]||^2
-        G = torch.tensor([[1., 1.]], device=device, dtype=dtype)
-        h = torch.tensor([1.], device=device, dtype=dtype)
+        q = torch.tensor([-2.0, -2.0], device=device, dtype=dtype)  # min ||x - [2,2]||^2
+        G = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
+        h = torch.tensor([1.0], device=device, dtype=dtype)
         lb = torch.zeros(2, device=device, dtype=dtype)
 
         x = solve_qp(P, q, G=G, h=h, lb=lb)
@@ -126,7 +126,7 @@ class TestQPGradients:
         from cuprox.torch import solve_qp
 
         P = torch.eye(3, device=device, dtype=dtype)
-        q = torch.tensor([1., 2., 3.], device=device, dtype=dtype, requires_grad=True)
+        q = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype, requires_grad=True)
 
         x = solve_qp(P, q)
         loss = x.sum()
@@ -141,10 +141,10 @@ class TestQPGradients:
         from cuprox.torch import solve_qp
 
         P = torch.eye(2, device=device, dtype=dtype, requires_grad=True)
-        q = torch.tensor([-2., -4.], device=device, dtype=dtype)
+        q = torch.tensor([-2.0, -4.0], device=device, dtype=dtype)
 
         x = solve_qp(P, q)
-        loss = (x ** 2).sum()
+        loss = (x**2).sum()
         loss.backward()
 
         assert P.grad is not None
@@ -156,8 +156,8 @@ class TestQPGradients:
 
         P = torch.eye(2, device=device, dtype=dtype)
         q = torch.zeros(2, device=device, dtype=dtype)
-        A = torch.tensor([[1., 1.]], device=device, dtype=dtype)
-        b = torch.tensor([2.], device=device, dtype=dtype, requires_grad=True)
+        A = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
+        b = torch.tensor([2.0], device=device, dtype=dtype, requires_grad=True)
 
         x = solve_qp(P, q, A=A, b=b)
         loss = x.sum()
@@ -172,7 +172,7 @@ class TestQPGradients:
         from cuprox.torch import solve_qp
 
         P = torch.eye(3, device=device, dtype=dtype)
-        q = torch.tensor([1., 2., 3.], device=device, dtype=dtype, requires_grad=True)
+        q = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype, requires_grad=True)
 
         # Analytical gradient
         x = solve_qp(P, q)
@@ -201,7 +201,7 @@ class TestQPGradients:
 
         P = 2 * torch.eye(2, device=device, dtype=dtype)
         P = P.clone().requires_grad_(True)  # Make it a leaf tensor
-        q = torch.tensor([-2., -4.], device=device, dtype=dtype)
+        q = torch.tensor([-2.0, -4.0], device=device, dtype=dtype)
 
         # Analytical gradient
         x = solve_qp(P, q)
@@ -424,11 +424,9 @@ class TestDecisionFocusedLayer:
         """Forward pass works."""
         from cuprox.torch import DecisionFocusedLayer
 
-        predictor = nn.Sequential(
-            nn.Linear(10, 32),
-            nn.ReLU(),
-            nn.Linear(32, 5)
-        ).to(device).to(dtype)
+        predictor = (
+            nn.Sequential(nn.Linear(10, 32), nn.ReLU(), nn.Linear(32, 5)).to(device).to(dtype)
+        )
 
         layer = DecisionFocusedLayer(predictor, n_vars=5).to(device)
         x = torch.randn(8, 10, device=device, dtype=dtype)
@@ -467,14 +465,14 @@ class TestDualVariables:
 
         P = torch.eye(2, device=device, dtype=dtype)
         q = torch.zeros(2, device=device, dtype=dtype)
-        A = torch.tensor([[1., 1.]], device=device, dtype=dtype)
-        b = torch.tensor([2.], device=device, dtype=dtype)
+        A = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
+        b = torch.tensor([2.0], device=device, dtype=dtype)
 
         sol = solve_qp_with_duals(P, q, A=A, b=b)
 
-        assert hasattr(sol, 'x')
-        assert hasattr(sol, 'nu')
-        assert hasattr(sol, 'lam')
+        assert hasattr(sol, "x")
+        assert hasattr(sol, "nu")
+        assert hasattr(sol, "lam")
         assert sol.x.shape == (2,)
         assert sol.nu.shape == (1,)
 
@@ -483,7 +481,7 @@ class TestDualVariables:
         from cuprox.torch import solve_qp_with_duals
 
         P = torch.eye(2, device=device, dtype=dtype)
-        q = torch.tensor([-10., -10.], device=device, dtype=dtype)
+        q = torch.tensor([-10.0, -10.0], device=device, dtype=dtype)
         lb = torch.zeros(2, device=device, dtype=dtype)
         ub = torch.ones(2, device=device, dtype=dtype)
 
@@ -505,13 +503,15 @@ class TestEdgeCases:
         """Single variable QP."""
         from cuprox.torch import solve_qp
 
-        P = torch.tensor([[2.]], device=device, dtype=dtype)
-        q = torch.tensor([-4.], device=device, dtype=dtype, requires_grad=True)
+        P = torch.tensor([[2.0]], device=device, dtype=dtype)
+        q = torch.tensor([-4.0], device=device, dtype=dtype, requires_grad=True)
 
         x = solve_qp(P, q)
         x.backward()
 
-        torch.testing.assert_close(x, torch.tensor([2.], device=device, dtype=dtype), atol=1e-3, rtol=1e-3)
+        torch.testing.assert_close(
+            x, torch.tensor([2.0], device=device, dtype=dtype), atol=1e-3, rtol=1e-3
+        )
         assert q.grad is not None
 
     def test_large_problem(self, device, dtype):
@@ -535,7 +535,7 @@ class TestEdgeCases:
         from cuprox.torch import solve_qp
 
         P = torch.eye(2, device=device, dtype=dtype)
-        q = torch.tensor([-100., -100.], device=device, dtype=dtype, requires_grad=True)
+        q = torch.tensor([-100.0, -100.0], device=device, dtype=dtype, requires_grad=True)
         lb = torch.zeros(2, device=device, dtype=dtype)
         ub = torch.ones(2, device=device, dtype=dtype)
 
@@ -552,7 +552,7 @@ class TestEdgeCases:
         from cuprox.torch import solve_qp
 
         P = torch.eye(2, device=device, dtype=dtype)
-        q = torch.tensor([-1., -2.], device=device, dtype=dtype)
+        q = torch.tensor([-1.0, -2.0], device=device, dtype=dtype)
 
         with torch.no_grad():
             x = solve_qp(P, q)
@@ -564,7 +564,7 @@ class TestEdgeCases:
         from cuprox.torch import solve_qp
 
         P = torch.eye(2, device=device, dtype=dtype)
-        q = torch.tensor([-1., -2.], device=device, dtype=dtype, requires_grad=True)
+        q = torch.tensor([-1.0, -2.0], device=device, dtype=dtype, requires_grad=True)
 
         x = solve_qp(P, q).detach()
 
@@ -666,4 +666,3 @@ class TestNeuralNetworkIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
