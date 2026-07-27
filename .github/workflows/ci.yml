@@ -28,10 +28,10 @@ jobs:
         run: pip install ruff black
         
       - name: Check formatting with Black
-        run: black --check --diff python/ tests/python/
+        run: black --check --diff python/ tests/python/ benchmarks/
         
       - name: Lint with Ruff
-        run: ruff check python/ tests/python/
+        run: ruff check python/ tests/python/ benchmarks/
 
   typecheck:
     name: Type Check

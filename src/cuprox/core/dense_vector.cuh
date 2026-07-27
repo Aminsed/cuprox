@@ -61,7 +61,7 @@ public:
     void fill(T value);
 
     void copy_from_host(const T* host_data, Index count) {
-        CUPROX_ASSERT(count <= size_, "copy_from_host: count exceeds size");
+        CUPROX_CHECK_DIM(count <= size_, "copy_from_host: count exceeds size");
         copy_host_to_device(data_.get(), host_data, count);
     }
 
@@ -71,7 +71,7 @@ public:
     }
 
     void copy_to_host(T* host_data, Index count) const {
-        CUPROX_ASSERT(count <= size_, "copy_to_host: count exceeds size");
+        CUPROX_CHECK_DIM(count <= size_, "copy_to_host: count exceeds size");
         copy_device_to_host(host_data, data_.get(), count);
     }
 
@@ -109,7 +109,7 @@ private:
 // BLAS specializations for double
 template <>
 inline void DeviceVector<double>::axpy(double alpha, const DeviceVector<double>& x) {
-    CUPROX_ASSERT(size_ == x.size_, "axpy: size mismatch");
+    CUPROX_CHECK_DIM(size_ == x.size_, "axpy: size mismatch");
     CUPROX_CUBLAS_CHECK(cublasDaxpy(cublas_handle(), size_, &alpha, 
                                      x.data(), 1, data_.get(), 1));
 }
@@ -121,7 +121,7 @@ inline void DeviceVector<double>::scale(double alpha) {
 
 template <>
 inline double DeviceVector<double>::dot(const DeviceVector<double>& other) const {
-    CUPROX_ASSERT(size_ == other.size_, "dot: size mismatch");
+    CUPROX_CHECK_DIM(size_ == other.size_, "dot: size mismatch");
     double result = 0.0;
     CUPROX_CUBLAS_CHECK(cublasDdot(cublas_handle(), size_, 
                                     data_.get(), 1, other.data(), 1, &result));
@@ -138,7 +138,7 @@ inline double DeviceVector<double>::norm2() const {
 // BLAS specializations for float
 template <>
 inline void DeviceVector<float>::axpy(float alpha, const DeviceVector<float>& x) {
-    CUPROX_ASSERT(size_ == x.size_, "axpy: size mismatch");
+    CUPROX_CHECK_DIM(size_ == x.size_, "axpy: size mismatch");
     CUPROX_CUBLAS_CHECK(cublasSaxpy(cublas_handle(), size_, &alpha, 
                                      x.data(), 1, data_.get(), 1));
 }
@@ -150,7 +150,7 @@ inline void DeviceVector<float>::scale(float alpha) {
 
 template <>
 inline float DeviceVector<float>::dot(const DeviceVector<float>& other) const {
-    CUPROX_ASSERT(size_ == other.size_, "dot: size mismatch");
+    CUPROX_CHECK_DIM(size_ == other.size_, "dot: size mismatch");
     float result = 0.0f;
     CUPROX_CUBLAS_CHECK(cublasSdot(cublas_handle(), size_, 
                                     data_.get(), 1, other.data(), 1, &result));
