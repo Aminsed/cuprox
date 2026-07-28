@@ -76,7 +76,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install numpy scipy pytest pytest-cov
+          pip install numpy scipy pytest
           pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       # CPU-only build. GitHub runners have no GPU, so this exercises the scipy
@@ -100,21 +100,6 @@ jobs:
       - name: Run tests
         run: |
           pytest tests/python -v -m "not gpu" --tb=short
-
-      - name: Run tests with coverage
-        if: matrix.python-version == '3.11'
-        run: |
-          # No fail-under here. This job deliberately runs only the
-          # solver-independent suites, so its coverage number reflects that and
-          # nothing else. Meaningful coverage needs a GPU runner.
-          pytest tests/python -v -m "not gpu" --cov=cuprox --cov-report=xml --cov-fail-under=0
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        if: matrix.python-version == '3.11'
-        with:
-          files: coverage.xml
-          fail_ci_if_error: false
 
   # ============================================================
   # Build check - verify package builds locally

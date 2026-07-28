@@ -161,27 +161,3 @@ ignore_missing_imports = true
 
 # pytest is configured in pytest.ini, which takes precedence over anything
 # written here.
-
-# ============================================================================
-# Coverage Configuration
-# ============================================================================
-
-[tool.coverage.run]
-source = ["python/cuprox"]
-branch = true
-parallel = true
-omit = [
-    "*/tests/*",
-    "*/__init__.py",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise NotImplementedError",
-    "if TYPE_CHECKING:",
-    "if __name__ == .__main__.:",
-]
-fail_under = 50
-show_missing = true
