@@ -110,7 +110,7 @@ jobs:
           pytest tests/python -v -m "not gpu" --cov=cuprox --cov-report=xml --cov-fail-under=0
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         if: matrix.python-version == '3.11'
         with:
           files: coverage.xml
