@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.24 FATAL_ERROR)
 # cuProx - GPU-Accelerated First-Order LP/QP Solver
 # ============================================================================
 
-project(cuprox 
-    VERSION 0.1.0
+project(cuprox
+    VERSION 0.2.0
     DESCRIPTION "GPU-accelerated LP/QP optimization solver using first-order methods"
     LANGUAGES CXX
 )
@@ -25,6 +25,25 @@ option(CUPROX_USE_DOUBLE "Use double precision (FP64) by default" ON)
 # ============================================================================
 
 if(NOT CUPROX_CPU_ONLY)
+    # ---------------------------------------------------------------------------
+    # Find nvcc before the CUDA language is enabled.
+    #
+    # CMake searches only PATH for nvcc. The usual Linux install puts the toolkit
+    # under /usr/local/cuda and only the driver on PATH, which would otherwise be
+    # indistinguishable from having no CUDA at all -- this is why `pip install`
+    # failed on machines that had a perfectly good toolkit.
+    # ---------------------------------------------------------------------------
+    if(NOT DEFINED CMAKE_CUDA_COMPILER AND NOT DEFINED ENV{CUDACXX})
+        file(GLOB _cuda_roots /usr/local/cuda-*)
+        find_program(_nvcc nvcc
+            HINTS ENV CUDA_HOME ENV CUDA_PATH ENV CUDA_ROOT
+                  /usr/local/cuda ${_cuda_roots}
+            PATH_SUFFIXES bin)
+        if(_nvcc)
+            set(CMAKE_CUDA_COMPILER "${_nvcc}")
+        endif()
+    endif()
+
     include(CheckLanguage)
     check_language(CUDA)
     
@@ -54,9 +73,14 @@ if(NOT CUPROX_CPU_ONLY)
         set(CUPROX_HAS_CUDA TRUE)
         
     else()
-        message(WARNING "CUDA compiler not found. Building CPU-only version.")
-        set(CUPROX_CPU_ONLY ON)
-        set(CUPROX_HAS_CUDA FALSE)
+        message(FATAL_ERROR
+            "cuProx is a GPU solver and no CUDA compiler was found.\n"
+            "Install the CUDA toolkit (11.4 or newer), then either put nvcc on\n"
+            "PATH or point CUDACXX at it:\n"
+            "    export CUDACXX=/usr/local/cuda/bin/nvcc\n"
+            "To build the CPU fallback on purpose, pass -DCUPROX_CPU_ONLY=ON.\n"
+            "Refusing to build silently without CUDA: the resulting package\n"
+            "would import cleanly and then fail on every solve.")
     endif()
 else()
     set(CUPROX_HAS_CUDA FALSE)

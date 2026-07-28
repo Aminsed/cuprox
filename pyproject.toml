@@ -18,7 +18,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "cuprox"
-version = "0.1.0"
+dynamic = ["version"]
 description = "GPU-accelerated LP/QP optimization solver using first-order proximal methods"
 readme = "README.md"
 license = {text = "MIT"}
@@ -98,6 +98,12 @@ Issues = "https://github.com/Aminsed/cuprox/issues"
 # ============================================================================
 # scikit-build-core Configuration
 # ============================================================================
+
+[tool.scikit-build.metadata.version]
+# One source of truth. The version previously lived in both
+# pyproject.toml and python/cuprox/__init__.py, which is one too many.
+provider = "scikit_build_core.metadata.regex"
+input = "python/cuprox/_version.py"
 
 [tool.scikit-build]
 cmake.build-type = "Release"

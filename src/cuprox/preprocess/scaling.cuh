@@ -68,6 +68,81 @@ ScalingFactors<T> ruiz_equilibrate(
 );
 
 /**
+ * @brief Modified Ruiz equilibration for a QP.
+ *
+ * Balances the problem
+ *     min 1/2 x'Px + q'x   s.t.   l <= Ax <= u,  lb <= x <= ub
+ * by finding diagonal scalings E (variables) and D (constraints) and a scalar
+ * cost scaling c, then rewriting the data in place:
+ *
+ *     P <- c E P E,  q <- c E q,  A <- D A E,  l <- D l,  u <- D u,
+ *     lb <- E^-1 lb, ub <- E^-1 ub
+ *
+ * A first-order method's convergence depends on the conditioning of the data it
+ * is handed, and nothing inside the iteration can compensate for a badly scaled
+ * problem. Portfolio problems make the point: a covariance of order 1e-4 against
+ * a return constraint of order 1e-3 left ADMM unable to hit a target return at
+ * all, returning +0.20 when asked for -0.0007.
+ *
+ * Each sweep sets the variable scaling from the largest entry in that variable's
+ * column of either P or A, and the constraint scaling from the largest entry in
+ * that row of A, so both matrices end up with infinity norms near one. The cost
+ * scaling then balances the objective against the constraints.
+ *
+ * @return factors needed to recover the original solution, see unscale_qp
+ */
+template <typename T>
+ScalingFactors<T> ruiz_equilibrate_qp(
+    CsrMatrix<T>& P,
+    CsrMatrix<T>& A,
+    DeviceVector<T>& q,
+    DeviceVector<T>& l,
+    DeviceVector<T>& u,
+    DeviceVector<T>& lb,
+    DeviceVector<T>& ub,
+    int max_iters = 10
+);
+
+/**
+ * @brief Undo ruiz_equilibrate_qp on both the solution and the problem data.
+ *
+ * The solution maps back as x = E x~ and y = c^-1 D y~. The problem data is
+ * restored as well, so a solver that scales internally does not leave the
+ * caller's problem altered -- solving the same QPProblem twice must give the
+ * same answer.
+ */
+template <typename T>
+void unscale_qp(
+    CsrMatrix<T>& P,
+    CsrMatrix<T>& A,
+    DeviceVector<T>& q,
+    DeviceVector<T>& l,
+    DeviceVector<T>& u,
+    DeviceVector<T>& lb,
+    DeviceVector<T>& ub,
+    DeviceVector<T>& x,
+    DeviceVector<T>& y,
+    const ScalingFactors<T>& s
+);
+
+/**
+ * @brief 2-norm of a vector measured in the caller's (unscaled) units.
+ *
+ * Equilibration leaves the iterates in scaled space, so a tolerance applied to
+ * them would mean something different from what the caller asked for. Dividing
+ * by the Ruiz factor for that space puts the quantity back in the original
+ * units: primal quantities carry a factor D, dual quantities a factor c*E.
+ *
+ * @param v       Vector in scaled units
+ * @param s       Ruiz factor for v's space (D for m-vectors, E for n-vectors)
+ * @param alpha   Extra scalar factor (1 for primal, 1/c for dual)
+ * @param scratch Workspace, resized to v.size()
+ */
+template <typename T>
+T unscaled_norm2(const DeviceVector<T>& v, const DeviceVector<T>& s, T alpha,
+                 DeviceVector<T>& scratch);
+
+/**
  * @brief Unscale solution after solving
  * 
  * Given scaled solution (x_scaled, y_scaled), recover original:

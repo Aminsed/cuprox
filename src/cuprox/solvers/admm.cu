@@ -103,6 +103,19 @@ void AdmmSolver<T>::initialize(QPProblem<T>& problem) {
     q_ = &problem.q;
     l_ = &problem.l;
     u_ = &problem.u;
+
+    // Equilibrate before anything reads the data. ADMM's convergence is
+    // governed by the conditioning of what it is handed, and nothing inside the
+    // iteration can recover from a badly scaled problem: a covariance of order
+    // 1e-4 against an order-1e-3 return constraint left it unable to hit a
+    // target return at all. The solution and the problem data are both restored
+    // at the end of solve(), so this is invisible to the caller.
+    if (settings_.scaling && m_ > 0) {
+        scaling_ = ruiz_equilibrate_qp(problem.P, problem.A, problem.q,
+                                       problem.l, problem.u,
+                                       problem.lb, problem.ub,
+                                       settings_.scaling_iters);
+    }
     
     // Variable bounds (optional)
     if (problem.lb.size() == n_) {
@@ -274,6 +287,20 @@ void AdmmSolver<T>::y_update() {
 }
 
 template <typename T>
+T AdmmSolver<T>::primal_norm(const DeviceVector<T>& v) {
+    if (!settings_.scaling || scaling_.D.size() != m_) return v.norm2();
+    return unscaled_norm2(v, scaling_.D, T(1), res_m_);
+}
+
+template <typename T>
+T AdmmSolver<T>::dual_norm(const DeviceVector<T>& v) {
+    if (!settings_.scaling || scaling_.E.size() != n_) return v.norm2();
+    return unscaled_norm2(v, scaling_.E, T(1) / scaling_.c_scale, res_n_);
+}
+
+// Residuals and tolerances are both evaluated in the caller's units, so
+// eps_abs/eps_rel mean the same thing whether or not equilibration is on.
+template <typename T>
 void AdmmSolver<T>::compute_residuals() {
     int num_blocks_m = (m_ + kBlockSize - 1) / kBlockSize;
     
@@ -283,7 +310,7 @@ void AdmmSolver<T>::compute_residuals() {
         pres.data(), Ax_.data(), z_.data(), m_);
     CUPROX_CUDA_CHECK_LAST();
     
-    primal_res_ = pres.norm2();
+    primal_res_ = primal_norm(pres);
     
     // Dual residual: ||rho * A'(z - z_prev)||
     DeviceVector<T> dz(m_);
@@ -294,7 +321,7 @@ void AdmmSolver<T>::compute_residuals() {
     Atdz.fill(T(0));
     A_->spmv_transpose(rho_, dz, T(0), Atdz);
     
-    dual_res_ = Atdz.norm2();
+    dual_res_ = dual_norm(Atdz);
 }
 
 template <typename T>
@@ -302,11 +329,11 @@ bool AdmmSolver<T>::check_convergence() {
     compute_residuals();
     
     // Compute tolerances (OSQP-style)
-    T Ax_norm = Ax_.norm2();
-    T z_norm = z_.norm2();
-    T Aty_norm = Aty_.norm2();
-    T Px_norm = Px_.norm2();
-    T q_norm = q_->norm2();
+    T Ax_norm = primal_norm(Ax_);
+    T z_norm = primal_norm(z_);
+    T Aty_norm = dual_norm(Aty_);
+    T Px_norm = dual_norm(Px_);
+    T q_norm = dual_norm(*q_);
     
     T eps_primal = settings_.eps_abs * std::sqrt(T(m_)) + 
                    settings_.eps_rel * std::max(Ax_norm, z_norm);
@@ -406,7 +433,11 @@ void AdmmSolver<T>::solve_unconstrained() {
 template <typename T>
 AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
     auto start_time = std::chrono::high_resolution_clock::now();
-    
+
+    // Kept for the objective, which must be reported in the original units.
+    DeviceVector<T> q_orig;
+    q_orig.copy_from(problem.q);
+
     initialize(problem);
     
     AdmmResult<T> result;
@@ -447,10 +478,23 @@ AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
     double elapsed = std::chrono::duration<double>(end_time - start_time).count();
     
     // Compute objective: (1/2)x'Px + q'x
+    // Undo the equilibration before anything is read back. This restores both
+    // the solution and the problem data, so the objective below is computed in
+    // the caller's units and solving the same QPProblem twice gives the same
+    // answer.
+    if (settings_.scaling && m_ > 0) {
+        unscale_qp(problem.P, problem.A, problem.q, problem.l, problem.u,
+                   problem.lb, problem.ub, x_, y_, scaling_);
+        // z is the auxiliary copy of Ax; recompute it in the original units.
+        Ax_.fill(T(0));
+        A_->spmv(T(1), x_, T(0), Ax_);
+        z_.copy_from(Ax_);
+    }
+
     Px_.fill(T(0));
     P_->spmv(T(1), x_, T(0), Px_);
     T quad_term = T(0.5) * x_.dot(Px_);
-    T lin_term = q_->dot(x_);
+    T lin_term = q_orig.dot(x_);
     T primal_obj = quad_term + lin_term;
     
     // Populate result

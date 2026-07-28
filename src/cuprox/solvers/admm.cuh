@@ -18,7 +18,11 @@ struct AdmmSettings {
     T eps_rel = T(1e-6);
     int check_interval = 25;
     bool verbose = false;
-    bool scaling = false;  // Disabled for now
+    // Ruiz equilibration. On by default: a first-order method cannot
+    // compensate internally for badly scaled data, and problems that mix a
+    // small covariance with an order-one constraint are common enough that
+    // off is the wrong default.
+    bool scaling = true;
     int scaling_iters = 10;
     
     // ADMM-specific parameters
@@ -100,6 +104,8 @@ private:
     void y_update();    // y = y + ρ(Ax - z)
     bool check_convergence();
     void compute_residuals();
+    T primal_norm(const DeviceVector<T>& v);  // 2-norm in the caller's units
+    T dual_norm(const DeviceVector<T>& v);
     void update_rho();
     void solve_unconstrained();  // Special case for m=0
     
@@ -125,6 +131,9 @@ private:
     DeviceVector<T> Atz_;     // A^T * z
     DeviceVector<T> rhs_;     // RHS for CG
     DeviceVector<T> temp_;
+    ScalingFactors<T> scaling_;
+    DeviceVector<T> res_m_;   // Workspace for unscaled norms (m,)
+    DeviceVector<T> res_n_;   // Workspace for unscaled norms (n,)
     
     // CG workspace
     DeviceVector<T> cg_r_;    // Residual

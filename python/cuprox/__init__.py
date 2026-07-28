@@ -29,7 +29,7 @@ For large-scale problems, use the matrix interface:
 >>> result = cuprox.solve(c=c, A=A, b=b, lb=np.zeros(5000))
 """
 
-__version__ = "0.1.0"
+from ._version import __version__
 __author__ = "cuProx Contributors"
 
 # Check for CUDA availability

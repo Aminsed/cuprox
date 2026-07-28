@@ -126,6 +126,24 @@ __global__ void scale_vector_kernel(T* data, T scale, Index n) {
     }
 }
 
+template <typename T>
+__global__ void elementwise_max_kernel(T* a, const T* b, Index n) {
+    Index i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) a[i] = (a[i] > b[i]) ? a[i] : b[i];
+}
+
+template <typename T>
+__global__ void reciprocal_kernel(T* a, Index n) {
+    Index i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) a[i] = (a[i] != T(0)) ? T(1) / a[i] : T(1);
+}
+
+template <typename T>
+__global__ void divide_vectors_kernel(T* a, const T* b, Index n) {
+    Index i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) a[i] = (b[i] != T(0)) ? a[i] / b[i] : a[i];
+}
+
 }  // namespace kernels
 
 constexpr int kBlockSize = 256;
@@ -265,6 +283,188 @@ ScalingFactors<T> ruiz_equilibrate(
     
     return scaling;
 }
+
+
+namespace {
+
+// Largest finite magnitude in a host-side copy. Used for the two scalars the
+// cost-scaling step needs; the vectors involved are length n, and this runs
+// scaling_iters times, so the transfer is negligible next to the solve.
+template <typename T>
+T inf_norm_host(const DeviceVector<T>& v) {
+    if (v.size() == 0) return T(0);
+    const auto h = v.to_host();
+    T best = T(0);
+    for (T e : h) {
+        const T a = std::abs(e);
+        if (std::isfinite(a) && a > best) best = a;
+    }
+    return best;
+}
+
+template <typename T>
+T mean_host(const DeviceVector<T>& v) {
+    if (v.size() == 0) return T(0);
+    const auto h = v.to_host();
+    double acc = 0.0;
+    for (T e : h) acc += static_cast<double>(e);
+    return static_cast<T>(acc / static_cast<double>(h.size()));
+}
+
+}  // namespace
+
+template <typename T>
+ScalingFactors<T> ruiz_equilibrate_qp(
+    CsrMatrix<T>& P, CsrMatrix<T>& A,
+    DeviceVector<T>& q, DeviceVector<T>& l, DeviceVector<T>& u,
+    DeviceVector<T>& lb, DeviceVector<T>& ub,
+    int max_iters
+) {
+    const Index n = A.num_cols();
+    const Index m = A.num_rows();
+    ScalingFactors<T> s(m, n);
+    s.D.fill(T(1));
+    s.E.fill(T(1));
+    s.c_scale = T(1);
+
+    DeviceVector<T> col_p(n), col_a(n), row_a(m), delta_x(n), delta_z(m);
+    const int gn = (n + kBlockSize - 1) / kBlockSize;
+    const int gm = (m + kBlockSize - 1) / kBlockSize;
+
+    for (int it = 0; it < max_iters; ++it) {
+        // Variable scaling: largest entry of this column in either P or A.
+        compute_col_inf_norms(P, col_p);
+        compute_col_inf_norms(A, col_a);
+        kernels::elementwise_max_kernel<<<gn, kBlockSize>>>(col_p.data(), col_a.data(), n);
+        kernels::invert_sqrt_kernel<<<gn, kBlockSize>>>(col_p.data(), n, T(1e-12));
+        CUPROX_CUDA_CHECK_LAST();
+        delta_x.copy_from(col_p);
+
+        // Constraint scaling: largest entry of this row of A.
+        compute_row_inf_norms(A, row_a);
+        kernels::invert_sqrt_kernel<<<gm, kBlockSize>>>(row_a.data(), m, T(1e-12));
+        CUPROX_CUDA_CHECK_LAST();
+        delta_z.copy_from(row_a);
+
+        // P <- Dx P Dx,  A <- Dz A Dx,  q <- Dx q
+        scale_rows(P, delta_x);
+        scale_cols(P, delta_x);
+        scale_cols(A, delta_x);
+        scale_rows(A, delta_z);
+        kernels::multiply_vectors_kernel<<<gn, kBlockSize>>>(q.data(), delta_x.data(), n);
+        CUPROX_CUDA_CHECK_LAST();
+
+        // Accumulate.
+        kernels::multiply_vectors_kernel<<<gn, kBlockSize>>>(s.E.data(), delta_x.data(), n);
+        kernels::multiply_vectors_kernel<<<gm, kBlockSize>>>(s.D.data(), delta_z.data(), m);
+        CUPROX_CUDA_CHECK_LAST();
+
+        // Cost scaling: balance the objective against the constraints.
+        compute_col_inf_norms(P, col_p);
+        const T mean_p = mean_host(col_p);
+        const T norm_q = inf_norm_host(q);
+        const T denom = std::max(mean_p, norm_q);
+        if (denom > T(1e-12)) {
+            const T gamma = T(1) / denom;
+            kernels::scale_vector_kernel<<<gn, kBlockSize>>>(q.data(), gamma, n);
+            CUPROX_CUDA_CHECK_LAST();
+            DeviceVector<T> gvec(n);
+            gvec.fill(gamma);
+            scale_rows(P, gvec);
+            s.c_scale *= gamma;
+        }
+    }
+
+    // Row bounds move with the constraint scaling; variable bounds move
+    // inversely with the variable scaling, since x = E x~.
+    kernels::multiply_vectors_kernel<<<gm, kBlockSize>>>(l.data(), s.D.data(), m);
+    kernels::multiply_vectors_kernel<<<gm, kBlockSize>>>(u.data(), s.D.data(), m);
+    if (lb.size() == n) {
+        kernels::divide_vectors_kernel<<<gn, kBlockSize>>>(lb.data(), s.E.data(), n);
+        kernels::divide_vectors_kernel<<<gn, kBlockSize>>>(ub.data(), s.E.data(), n);
+    }
+    CUPROX_CUDA_CHECK_LAST();
+    return s;
+}
+
+template <typename T>
+void unscale_qp(
+    CsrMatrix<T>& P, CsrMatrix<T>& A,
+    DeviceVector<T>& q, DeviceVector<T>& l, DeviceVector<T>& u,
+    DeviceVector<T>& lb, DeviceVector<T>& ub,
+    DeviceVector<T>& x, DeviceVector<T>& y,
+    const ScalingFactors<T>& s
+) {
+    const Index n = A.num_cols();
+    const Index m = A.num_rows();
+    const int gn = (n + kBlockSize - 1) / kBlockSize;
+    const int gm = (m + kBlockSize - 1) / kBlockSize;
+
+    // Solution: x = E x~,  y = c^-1 D y~.
+    kernels::multiply_vectors_kernel<<<gn, kBlockSize>>>(x.data(), s.E.data(), n);
+    kernels::multiply_vectors_kernel<<<gm, kBlockSize>>>(y.data(), s.D.data(), m);
+    kernels::scale_vector_kernel<<<gm, kBlockSize>>>(y.data(), T(1) / s.c_scale, m);
+    CUPROX_CUDA_CHECK_LAST();
+
+    // Problem data, so the caller's QPProblem is left as it was found.
+    DeviceVector<T> inv_e(n), inv_d(m);
+    inv_e.copy_from(s.E);
+    inv_d.copy_from(s.D);
+    kernels::reciprocal_kernel<<<gn, kBlockSize>>>(inv_e.data(), n);
+    kernels::reciprocal_kernel<<<gm, kBlockSize>>>(inv_d.data(), m);
+    CUPROX_CUDA_CHECK_LAST();
+
+    scale_rows(P, inv_e);
+    scale_cols(P, inv_e);
+    scale_rows(A, inv_d);
+    scale_cols(A, inv_e);
+    kernels::multiply_vectors_kernel<<<gn, kBlockSize>>>(q.data(), inv_e.data(), n);
+    kernels::scale_vector_kernel<<<gn, kBlockSize>>>(q.data(), T(1) / s.c_scale, n);
+    {
+        DeviceVector<T> gvec(n);
+        gvec.fill(T(1) / s.c_scale);
+        scale_rows(P, gvec);
+    }
+    kernels::multiply_vectors_kernel<<<gm, kBlockSize>>>(l.data(), inv_d.data(), m);
+    kernels::multiply_vectors_kernel<<<gm, kBlockSize>>>(u.data(), inv_d.data(), m);
+    if (lb.size() == n) {
+        kernels::multiply_vectors_kernel<<<gn, kBlockSize>>>(lb.data(), s.E.data(), n);
+        kernels::multiply_vectors_kernel<<<gn, kBlockSize>>>(ub.data(), s.E.data(), n);
+    }
+    CUPROX_CUDA_CHECK_LAST();
+}
+
+template ScalingFactors<float> ruiz_equilibrate_qp<float>(
+    CsrMatrix<float>&, CsrMatrix<float>&, DeviceVector<float>&, DeviceVector<float>&,
+    DeviceVector<float>&, DeviceVector<float>&, DeviceVector<float>&, int);
+template ScalingFactors<double> ruiz_equilibrate_qp<double>(
+    CsrMatrix<double>&, CsrMatrix<double>&, DeviceVector<double>&, DeviceVector<double>&,
+    DeviceVector<double>&, DeviceVector<double>&, DeviceVector<double>&, int);
+template void unscale_qp<float>(
+    CsrMatrix<float>&, CsrMatrix<float>&, DeviceVector<float>&, DeviceVector<float>&,
+    DeviceVector<float>&, DeviceVector<float>&, DeviceVector<float>&,
+    DeviceVector<float>&, DeviceVector<float>&, const ScalingFactors<float>&);
+template void unscale_qp<double>(
+    CsrMatrix<double>&, CsrMatrix<double>&, DeviceVector<double>&, DeviceVector<double>&,
+    DeviceVector<double>&, DeviceVector<double>&, DeviceVector<double>&,
+    DeviceVector<double>&, DeviceVector<double>&, const ScalingFactors<double>&);
+
+template <typename T>
+T unscaled_norm2(const DeviceVector<T>& v, const DeviceVector<T>& s, T alpha,
+                 DeviceVector<T>& scratch) {
+    const Index n = v.size();
+    if (scratch.size() != n) scratch.resize(n);
+    scratch.copy_from(v);
+    kernels::divide_vectors_kernel<<<(n + kBlockSize - 1) / kBlockSize, kBlockSize>>>(
+        scratch.data(), s.data(), n);
+    CUPROX_CUDA_CHECK_LAST();
+    return alpha * scratch.norm2();
+}
+
+template float unscaled_norm2<float>(const DeviceVector<float>&,
+    const DeviceVector<float>&, float, DeviceVector<float>&);
+template double unscaled_norm2<double>(const DeviceVector<double>&,
+    const DeviceVector<double>&, double, DeviceVector<double>&);
 
 template <typename T>
 void unscale_solution(
