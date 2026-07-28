@@ -295,3 +295,107 @@ def test_qp_gradients_match_closed_form():
         solve_qp(P, qi).backward(seed)
         jac[i] = qi.grad.detach().numpy()
     np.testing.assert_allclose(jac, -np.linalg.inv(P.numpy()), atol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Defects found in external review, 2026-07-28
+# ---------------------------------------------------------------------------
+
+
+def test_cpu_lp_reports_optimal_not_numerical_error():
+    """The CPU LP path mapped SciPy codes onto Status members that do not exist.
+
+    The resulting AttributeError was raised inside a broad ``except Exception``
+    and converted to NUMERICAL_ERROR, so this feasible LP -- whose optimum is
+    -7 at (4, 3) -- came back with a nan objective and a zero vector.
+    """
+    result = cuprox.solve(
+        c=np.array([-1.0, -1.0]),
+        A=np.array([[1.0, 2.0], [3.0, 1.0]]),
+        b=np.array([10.0, 15.0]),
+        lb=np.zeros(2),
+        params={"device": "cpu"},
+    )
+    assert result.status == Status.OPTIMAL
+    assert result.objective == pytest.approx(-7.0, abs=1e-6)
+
+
+def test_cpu_path_does_not_mask_programming_errors():
+    """A bug in the fallback must not be reported as a numerical failure.
+
+    The broad except is why the broken status map went unnoticed: every LP came
+    back "numerical error", which reads as a hard problem rather than a defect.
+    """
+    import inspect
+
+    import cuprox.solver as solver_module
+
+    source = inspect.getsource(solver_module)
+    assert "except (AttributeError, TypeError, NameError, ImportError):" in source
+    # And the names that never existed must not be referenced as code.
+    assert "2: Status.INFEASIBLE" not in source
+    assert "3: Status.UNBOUNDED" not in source
+
+
+def test_warm_start_is_rejected_rather_than_ignored():
+    """warm_start was accepted by the signature and read by nothing."""
+    with pytest.raises(NotImplementedError):
+        cuprox.solve(
+            c=np.zeros(2),
+            A=np.eye(2),
+            b=np.ones(2),
+            warm_start=np.zeros(2),
+        )
+
+
+def test_from_matrices_keeps_P():
+    """Model.from_matrices stored its matrices where solve() never looked.
+
+    solve() always rebuilt a linear model through _to_standard_form(), which
+    has no algebraic objective for such a model and drops P, so this QP raised
+    a raw cuSPARSE error instead of returning (0.5, 0.5).
+    """
+    model = cuprox.Model.from_matrices(
+        c=np.zeros(2),
+        A_ub=np.array([[-1.0, -1.0]]),
+        b_ub=np.array([-1.0]),
+        P=np.eye(2),
+    )
+    result = model.solve()
+    assert result.status == Status.OPTIMAL
+    assert result.objective == pytest.approx(0.25, abs=1e-3)
+    assert result.x == pytest.approx([0.5, 0.5], abs=1e-2)
+
+
+def test_pdhg_iteration_count_is_not_doubled():
+    """PDHG incremented iter_ in iterate() and again in the loop calling it.
+
+    The solver therefore ran half the requested iterations and reported a count
+    that skipped. A capped, deliberately unconverged run must report the cap.
+    """
+    rng = np.random.default_rng(0)
+    cap = 100
+    result = cuprox.solve(
+        c=rng.standard_normal(200),
+        A=rng.standard_normal((100, 200)),
+        b=np.ones(100),
+        lb=np.full(200, -1.0),
+        ub=np.full(200, 1.0),
+        params={"max_iterations": cap, "tolerance": 1e-14},
+    )
+    assert result.iterations == cap
+
+
+def test_torch_layer_does_not_claim_gradients_it_does_not_return():
+    """backward returns None for every constraint parameter.
+
+    The module and class docstrings advertised gradients for A, b, G, h, lb and
+    ub. Only P and q are differentiated.
+    """
+    import inspect
+
+    from cuprox.torch import functions as fn
+
+    source = inspect.getsource(fn)
+    assert "Gradients for all problem parameters" not in source
+    assert "Supports gradients for ALL problem parameters" not in source

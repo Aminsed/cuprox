@@ -405,6 +405,14 @@ class Model:
         """
         from .solver import solve
 
+        # from_matrices stores its arguments in _matrix_form. Until this branch
+        # existed they were never read: solve() always rebuilt a linear model
+        # through _to_standard_form(), which has no algebraic objective for such
+        # a model and drops P entirely, so a QP built this way surfaced a raw
+        # cuSPARSE error instead of a solution.
+        if getattr(self, "_matrix_form", None) is not None:
+            return self._solve_matrix_form(params)
+
         # Convert to matrix form
         A, b, c, lb, ub, senses = self._to_standard_form()
 
@@ -541,6 +549,43 @@ class Model:
         }
 
         return model
+
+    def _solve_matrix_form(self, params: Optional[Dict[str, Any]]) -> "SolveResult":
+        """Solve the matrices handed to from_matrices, without rebuilding them."""
+        from scipy import sparse
+
+        from .solver import solve
+
+        mf = self._matrix_form
+        blocks: List[Any] = []
+        rhs: List[np.ndarray] = []
+        senses: List[str] = []
+        for key_a, key_b, sense in (("A_ub", "b_ub", "<="), ("A_eq", "b_eq", "==")):
+            if mf.get(key_a) is None:
+                continue
+            blocks.append(mf[key_a])
+            rhs.append(np.asarray(mf[key_b], dtype=float).ravel())
+            senses.extend([sense] * len(rhs[-1]))
+
+        if blocks:
+            if any(sparse.issparse(blk) for blk in blocks):
+                a = sparse.vstack([sparse.csr_matrix(blk) for blk in blocks], format="csr")
+            else:
+                a = np.vstack([np.asarray(blk, dtype=float) for blk in blocks])
+            b = np.concatenate(rhs)
+        else:
+            a, b = None, None
+
+        return solve(
+            c=mf["c"],
+            A=a,
+            b=b,
+            P=mf.get("P"),
+            lb=mf.get("lb"),
+            ub=mf.get("ub"),
+            constraint_senses=senses or None,
+            params=params,
+        )
 
     def __repr__(self) -> str:
         return f"Model(vars={self.num_vars}, constrs={self.num_constrs})"

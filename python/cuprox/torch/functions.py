@@ -6,12 +6,14 @@ This module provides PyTorch autograd functions that enable
 backpropagation through optimization problems.
 
 Features:
-- Batched solving for parallel GPU execution
-- Full KKT-based implicit differentiation
-- Gradients for all problem parameters (P, q, A, b, G, h)
-- Dual variable output and differentiation
-- GPU-accelerated backward pass
-- Support for higher-order gradients
+- Gradients for the objective parameters P and q, via implicit
+  differentiation of the KKT conditions
+- Dual variable output
+
+Not implemented, despite earlier documentation to the contrary: `backward`
+returns None for A, b, G, h, lb and ub, so constraint parameters carry no
+gradient. Batching loops in Python and round-trips each problem through NumPy,
+so it is a convenience API rather than parallel GPU execution.
 
 The backward pass uses implicit differentiation of the KKT
 conditions to compute gradients efficiently.
@@ -58,12 +60,14 @@ class QPFunction(Function):
     Forward: Solves the QP using cuprox (batched or single)
     Backward: Computes gradients via implicit differentiation of KKT conditions
 
-    Supports gradients for ALL problem parameters:
+    Gradients are returned for:
     - P: Quadratic cost matrix
     - q: Linear cost vector
-    - A, b: Equality constraints (Ax = b)
-    - G, h: Inequality constraints (Gx <= h)
-    - lb, ub: Variable bounds
+
+    and are None for A, b, G, h, lb and ub. Differentiating through the
+    constraint parameters requires the adjoint KKT solve to account for the
+    active set, which is not implemented here; returning None is deliberate so
+    that a wrong gradient is never silently produced.
 
     The backward pass uses the implicit function theorem on KKT conditions:
 

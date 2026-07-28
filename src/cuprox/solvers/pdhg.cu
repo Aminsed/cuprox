@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "pdhg.cuh"
 #include "../linalg/projections.cuh"
 #include "../core/cuda_context.cuh"
@@ -295,8 +296,6 @@ void PdhgSolver<T>::iterate() {
     kernels::dual_update_kernel<<<num_blocks_m, kBlockSize>>>(
         y_.data(), y_prev_.data(), Ax_.data(), l_->data(), u_->data(), sigma_, m_);
     CUPROX_CUDA_CHECK_LAST();
-
-    ++iter_;
 }
 
 template <typename T>
@@ -459,7 +458,9 @@ PdhgResult<T> PdhgSolver<T>::solve(LPProblem<T>& problem) {
     result.dual_obj = dual_obj;
     result.primal_res = primal_res_;
     result.dual_res = dual_res_;
-    result.iterations = iter_;
+    // The loop leaves iter_ one past the bound when it exhausts, so a cap of
+    // 100 reported 101. Converged runs break early and are unaffected.
+    result.iterations = std::min(iter_, settings_.max_iters);
     result.solve_time = elapsed;
 
     return result;
