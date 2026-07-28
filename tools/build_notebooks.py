@@ -215,18 +215,23 @@ getting_started = nb(
         '        f"n={n}: {c/g:5.2f}x" for n, g, c in zip(sizes, gpu, cpu)))'
     ),
     code(
-        "fig, ax = plt.subplots(figsize=(7, 4))\n"
-        'for kind, style in (("banded", "--"), ("random", "-")):\n'
+        "# Bars rather than joined points: two sizes is enough to show the\n"
+        "# effect, but a line through two points on log-log axes would claim a\n"
+        "# slope that two measurements cannot support.\n"
+        "fig, ax = plt.subplots(figsize=(6.5, 4))\n"
+        "x = np.arange(len(sizes))\n"
+        "width = 0.35\n"
+        'for i, (kind, colour) in enumerate((("banded", REF), ("random", GPU))):\n'
         "    gpu, cpu = timings[kind]\n"
-        "    ax.plot(sizes, [c / g for c, g in zip(cpu, gpu)], style, marker=\"o\",\n"
-        '            color=GPU, label=f"{kind} A")\n'
-        'ax.axhline(1.0, color=REF, lw=1, ls=":")\n'
-        'ax.text(sizes[0], 1.05, "parity", color=REF, fontsize=8)\n'
-        'ax.set_xscale("log")\n'
+        "    ax.bar(x + (i - 0.5) * width, [c / g for c, g in zip(cpu, gpu)],\n"
+        '           width, color=colour, label=f"{kind} A")\n'
+        'ax.axhline(1.0, color="0.35", lw=1, ls=":")\n'
+        'ax.text(-0.45, 1.1, "parity with OSQP", color="0.35", fontsize=8)\n'
         'ax.set_yscale("log")\n'
-        'ax.set_xlabel("variables")\n'
+        "ax.set_xticks(x)\n"
+        'ax.set_xticklabels([f"n = {n:,}" for n in sizes])\n'
         'ax.set_ylabel("speedup over OSQP")\n'
-        'ax.set_title("The sparsity pattern matters more than the size")\n'
+        'ax.set_title("Sparsity pattern decides the winner, not problem size")\n'
         "ax.legend()\n"
         'fig.savefig("benchmark_sparsity.png")\n'
         "plt.show()"
@@ -325,14 +330,6 @@ differentiable = nb(
         "assert losses[-1] < losses[0] / 100"
     ),
     code(
-        "fig, ax = plt.subplots(figsize=(6.5, 3.6))\n"
-        "ax.semilogy(losses, color=GPU, lw=2)\n"
-        'ax.set_xlabel("step")\n'
-        'ax.set_ylabel("mean squared error")\n'
-        'ax.set_title("Learning the objective through the solver")\n'
-        'fig.savefig("qp_layer_training.png")\n'
-        "plt.show()\n"
-        "\n"
         "achieved = solve_qp(P_fixed, q_learn).detach().numpy()\n"
         'print(f"max |x* - target| = {np.abs(achieved - target.numpy()).max():.2e}")'
     ),
@@ -340,102 +337,6 @@ differentiable = nb(
 
 
 # ---------------------------------------------------------------- 03
-
-
-portfolio = nb(
-    md(
-        "# Portfolio optimization\n\n"
-        "Minimum-variance and maximum-Sharpe portfolios, and an efficient "
-        "frontier, checked against `cvxpy`."
-    ),
-    code(PREAMBLE + "\n\nfrom cuprox.finance import Portfolio"),
-    md(
-        "## Data\n\n"
-        "Synthetic daily returns for eight assets with different drifts, so the "
-        "results are reproducible without a data dependency."
-    ),
-    code(
-        "rng = np.random.default_rng(7)\n"
-        "n_assets, n_days = 8, 756\n"
-        "factor = rng.standard_normal(n_days)\n"
-        "beta = rng.uniform(0.4, 1.4, n_assets)\n"
-        "returns = (0.01 * np.outer(factor, beta)\n"
-        "           + 0.012 * rng.standard_normal((n_days, n_assets)))\n"
-        "returns += np.linspace(-0.0002, 0.0009, n_assets)\n"
-        "\n"
-        "port = Portfolio(returns)\n"
-        'print("annualised expected returns:", np.round(port.expected_returns, 4))'
-    ),
-    md("## Two portfolios"),
-    code(
-        'mv = port.optimize(method="min_variance")\n'
-        'ms = port.optimize(method="max_sharpe")\n'
-        "\n"
-        "for name, r in ((\"min variance\", mv), (\"max sharpe\", ms)):\n"
-        '    print(f"{name:>13}  return {r.expected_return:7.4f}  '
-        'vol {r.volatility:6.4f}  sharpe {r.sharpe_ratio:6.3f}  [{r.status}]")\n'
-        "\n"
-        "assert mv.status == \"optimal\" and ms.status == \"optimal\"\n"
-        "# Weights are a portfolio: non-negative and summing to one.\n"
-        "for r in (mv, ms):\n"
-        "    assert abs(r.weights.sum() - 1.0) < 1e-4\n"
-        "    assert np.all(r.weights >= -1e-6)\n"
-        "# Each optimum must be best at its own objective.\n"
-        "assert mv.volatility <= ms.volatility + 1e-6\n"
-        "assert ms.sharpe_ratio >= mv.sharpe_ratio - 1e-6"
-    ),
-    md(
-        "## Checking the frontier against cvxpy\n\n"
-        "For a set of target returns, solve `min wᵀΣw s.t. μᵀw = target, "
-        "Σw = 1, w ≥ 0` with both cuProx and cvxpy and compare the resulting "
-        "volatilities."
-    ),
-    code(
-        "import cvxpy as cp\n"
-        "\n"
-        "mu, cov = port.expected_returns, port.covariance\n"
-        "span = mu.max() - mu.min()\n"
-"targets = np.linspace(mu.min() + 0.05 * span, mu.max() - 0.05 * span, 9)\n"
-"periods = 252  # trading days, the annualisation Portfolio applies\n"
-        "\n"
-        "vol_gpu, vol_ref = [], []\n"
-        "for t in targets:\n"
-        '    r = port.optimize(method="target_return", target_return=float(t))\n'
-        "    vol_gpu.append(r.volatility)\n"
-"    assert abs(r.expected_return - t * periods) < 1e-3 * max(abs(t * periods), 1.0)\n"
-        "\n"
-        "    w = cp.Variable(len(mu))\n"
-        "    prob = cp.Problem(cp.Minimize(cp.quad_form(w, cp.psd_wrap(cov))),\n"
-        "                      [cp.sum(w) == 1, w >= 0, mu @ w == t])\n"
-        "    prob.solve(solver=cp.CLARABEL)\n"
-        "    # PortfolioResult reports annualised figures; the covariance here is\n"
-"    # per-period, so annualise the reference before comparing.\n"
-"    vol_ref.append(float(np.sqrt(prob.value * periods)))\n"
-        "\n"
-        "vol_gpu, vol_ref = np.array(vol_gpu), np.array(vol_ref)\n"
-        "rel = np.abs(vol_gpu - vol_ref) / vol_ref\n"
-        'print(f"frontier volatility, max relative difference vs cvxpy: {rel.max():.2e}")\n'
-        "assert rel.max() < 5e-3"
-    ),
-    code(
-        "fig, ax = plt.subplots(figsize=(7, 4.4))\n"
-        'ax.plot(vol_ref, targets, "o", ms=9, mfc="none", color=REF, label="cvxpy")\n'
-        'ax.plot(vol_gpu, targets, "-", lw=2, color=GPU, label="cuProx")\n'
-        'ax.scatter(mv.volatility, mv.expected_return, s=90, marker="s",\n'
-        '           color="#C8102E", zorder=5, label="min variance")\n'
-        'ax.scatter(ms.volatility, ms.expected_return, s=110, marker="*",\n'
-        '           color="#C8102E", zorder=5, label="max sharpe")\n'
-        'ax.set_xlabel("annualised volatility")\n'
-        'ax.set_ylabel("annualised return")\n'
-        'ax.set_title("Efficient frontier")\n'
-        "ax.legend()\n"
-        'fig.savefig("portfolio_frontier.png")\n'
-        "plt.show()"
-    ),
-)
-
-
-# ---------------------------------------------------------------- 04
 
 
 mpc = nb(
@@ -521,8 +422,7 @@ mpc = nb(
 NOTEBOOKS = {
     "01_getting_started.ipynb": getting_started,
     "02_differentiable_optimization.ipynb": differentiable,
-    "03_portfolio_optimization.ipynb": portfolio,
-    "04_model_predictive_control.ipynb": mpc,
+    "03_model_predictive_control.ipynb": mpc,
 }
 
 

@@ -242,18 +242,13 @@ are true.
 
 | Notebook | What it covers |
 |---|---|
-| [01 — Getting started](examples/01_getting_started.ipynb) | The API end to end, and how solve time scales with sparsity |
-| [02 — Differentiable optimization](examples/02_differentiable_optimization.ipynb) | A QP as a PyTorch layer; gradients checked against the implicit Jacobian |
-| [03 — Portfolio optimization](examples/03_portfolio_optimization.ipynb) | Markowitz frontier, max-Sharpe, and target-return solves |
-| [04 — Model predictive control](examples/04_model_predictive_control.ipynb) | Receding-horizon control of a double integrator |
+| [01 — Getting started](examples/01_getting_started.ipynb) | The API end to end, and how the sparsity pattern — not the problem size — decides whether the GPU wins |
+| [02 — Differentiable optimization](examples/02_differentiable_optimization.ipynb) | A QP as a PyTorch layer, with gradients checked against the implicit Jacobian |
+| [03 — Model predictive control](examples/03_model_predictive_control.ipynb) | Receding-horizon control of a double integrator, driven onto its input limits |
 
-![Solve time vs sparsity](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/benchmark_sparsity.png)
+![Sparsity pattern decides the winner, not problem size](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/benchmark_sparsity.png)
 
-![QP layer training](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/qp_layer_training.png)
-
-![Efficient frontier](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/portfolio_frontier.png)
-
-![MPC double integrator](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/mpc_double_integrator.png)
+![Double integrator under MPC, saturating the input constraint](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/mpc_double_integrator.png)
 
 ---
 
