@@ -16,6 +16,31 @@ except ImportError:
 
 
 # ============================================================================
+# Determinism
+# ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _deterministic_seeds():
+    """Seed every RNG before each test.
+
+    Several tests draw random problem data and then assert on a tolerance.
+    Without a fixed seed those assertions pass or fail by luck, and a failure
+    cannot be reproduced from the report alone.
+    """
+    import random
+
+    random.seed(0)
+    np.random.seed(0)
+    try:
+        import torch
+    except ImportError:
+        pass
+    else:
+        torch.manual_seed(0)
+
+
+# ============================================================================
 # Fixtures
 # ============================================================================
 

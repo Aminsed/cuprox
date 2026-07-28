@@ -4,7 +4,7 @@
 
 **GPU-Accelerated First-Order LP/QP Solver**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Aminsed/cuprox/blob/main/LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![CUDA 11.4+](https://img.shields.io/badge/CUDA-11.4+-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 
@@ -53,9 +53,42 @@ cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and
 
 ## Installation
 
-cuProx is built from source to ensure optimal performance for your specific hardware. See [INSTALL.md](INSTALL.md) for detailed instructions.
+```bash
+pip install cuprox
+```
 
-### Quick Start (GPU Build)
+The CUDA kernels are compiled for your GPU at install time, so a CUDA toolkit
+has to be present. There is no prebuilt wheel, and that is deliberate: a wheel
+without the compiled core imports cleanly and then fails on every solve, which
+is exactly what the 0.1.0 release did.
+
+**Requirements:** CUDA Toolkit 11.4+, CMake 3.24+, Python 3.9+, and a C++17
+compiler. `nvcc` does not need to be on `PATH` -- the standard toolkit
+locations are searched, and `CUDACXX` overrides that search. If no CUDA
+compiler is found the build fails with instructions rather than quietly
+producing a package that cannot solve.
+
+From a checkout:
+
+```bash
+git clone https://github.com/Aminsed/cuprox.git
+cd cuprox
+pip install .
+```
+
+### Verify
+
+```python
+import cuprox
+print(cuprox.__version__)
+print(cuprox.__cuda_available__)   # True means the GPU core is present
+```
+
+See [INSTALL.md](INSTALL.md) for build options and troubleshooting.
+
+---
+
+## Quick Start (GPU Build)
 
 **Prerequisites:**
 - CUDA Toolkit 11.4+
@@ -200,67 +233,27 @@ print(f"Portfolio variance: {result.objective:.4f}")
 
 ---
 
-## Example Gallery
+## Examples
 
-Each core notebook now ships with a couple of “hero” visuals. Browse the highlights below (all generated directly from the notebooks).
+Four notebooks, each runnable end-to-end on a GPU. Every figure below was
+produced by the notebook that names it, and every number quoted in the text is
+checked with an `assert` rather than narrated — if a notebook runs, its claims
+are true.
 
-### Notebook 01 — Differentiable QP Layers (PyTorch)
+| Notebook | What it covers |
+|---|---|
+| [01 — Getting started](examples/01_getting_started.ipynb) | The API end to end, and how solve time scales with sparsity |
+| [02 — Differentiable optimization](examples/02_differentiable_optimization.ipynb) | A QP as a PyTorch layer; gradients checked against the implicit Jacobian |
+| [03 — Portfolio optimization](examples/03_portfolio_optimization.ipynb) | Markowitz frontier, max-Sharpe, and target-return solves |
+| [04 — Model predictive control](examples/04_model_predictive_control.ipynb) | Receding-horizon control of a double integrator |
 
-![OptNet Decision-Focused Training](examples/pytorch_decision_focused.png)
-- Decision-focused OptNet stack trained end-to-end on GPU, showing large downstream gains.
+![Solve time vs sparsity](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/benchmark_sparsity.png)
 
-![QP Gradient Flow](examples/qp_gradient_flow.png)
-- Visualizes the implicit Jacobian used for stable backpropagation through QP layers.
+![QP layer training](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/qp_layer_training.png)
 
-### Notebook 02 — Multi-Period Portfolio Optimization
+![Efficient frontier](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/portfolio_frontier.png)
 
-![Efficient Frontier & Capital Market Line](examples/portfolio_frontier.png)
-- Proper Markowitz frontier with capital market line, turnover limits, and transaction costs.
-
-![Rolling Backtest Diagnostics](examples/portfolio_backtest.png)
-- Realised returns, drawdowns, and turnover over a multi-year simulation.
-
-### Notebook 03 — GPU MPC (Shooting Form)
-
-![Extreme Racetrack Trajectory](examples/mpc_racing.png)
-- 440-variable shooting MPC with centimetre-level tracking error.
-
-![Disturbance Rejection Replanning](examples/mpc_disturbance.png)
-- 1 kHz replanning loop that absorbs injected velocity impulses while respecting bounds.
-
-### Notebook 04 — Stochastic Programming at Scale
-
-![Energy Portfolio under Renewable Uncertainty](examples/stochastic_energy.png)
-- Two-stage SAA model allocating gas, solar, and wind with storage and penalty costs.
-
-![CVaR Frontier](examples/stochastic_cvar.png)
-- Risk-averse dispatch showing how CVaR tightening shifts the optimal generation mix.
-
-### Notebook 05 — Finance Stress Lab
-
-![Regime-Aware Frontier](examples/finance_frontier.png)
-- Multi-period frontier with regime switching, leverage caps, and borrowing costs.
-
-![GPU vs CPU Stress Benchmarks](examples/finance_benchmark.png)
-- Monte Carlo stress testing across thousands of scenarios.
-
-### Notebook 06 — Learn to Race: GPU-Accelerated Racing AI
-
-Complex track with walls, obstacles, and crash physics. Neural policy learns via imitation learning with DAgger.
-
-![Track Layout](examples/track_layout.png)
-- Racing track with variable-width walls and strategic obstacles.
-
-![Training Progress](examples/training_progress.gif)
-- Training loss convergence with DAgger iterations adding 200K+ training samples.
-
-![Head-to-Head Race](examples/racing_head2head.gif)
-- Expert (green) vs learned (pink) racing side-by-side with real-time speed and distance display.
-
-![Control Signals Comparison](examples/controls_comparison.gif)
-- Acceleration and steering commands comparison between expert and learned policy.
-
-**Training:** 800+ epochs with DAgger, 200K samples, 803K model parameters.
+![MPC double integrator](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/mpc_double_integrator.png)
 
 ---
 

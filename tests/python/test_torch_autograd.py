@@ -388,6 +388,9 @@ class TestParametricQPLayer:
         layer = ParametricQPLayer(n_vars=n, init_scale=0.5).to(device).to(dtype)
         optimizer = torch.optim.Adam(layer.parameters(), lr=0.05)
 
+        with torch.no_grad():
+            error_init = ((layer(q) - x_true) ** 2).mean().item()
+
         for _ in range(50):
             optimizer.zero_grad()
             x_pred = layer(q)
@@ -395,10 +398,13 @@ class TestParametricQPLayer:
             loss.backward()
             optimizer.step()
 
-        # Final predictions should be closer than initial
+        # Training must move the predictions closer. Comparing against the
+        # layer's own starting point keeps this scale-free: P_true is random,
+        # so an absolute threshold is really a statement about how well
+        # conditioned that draw happened to be.
         x_final = layer(q)
         error = ((x_final - x_true) ** 2).mean().item()
-        assert error < 5.0  # Reasonable fit (learning is approximate)
+        assert error < error_init
 
 
 class TestBatchQPLayer:
