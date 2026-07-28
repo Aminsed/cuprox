@@ -27,7 +27,7 @@ if(CUPROX_HAS_CUDA)
         GTest::gtest_main
     )
     gtest_discover_tests(test_dense_vector)
-    
+
     # Sparse matrix tests
     add_executable(test_sparse_matrix test_sparse_matrix.cpp)
     target_link_libraries(test_sparse_matrix PRIVATE
@@ -35,7 +35,7 @@ if(CUPROX_HAS_CUDA)
         GTest::gtest_main
     )
     gtest_discover_tests(test_sparse_matrix)
-    
+
     # PDHG solver tests
     add_executable(test_pdhg test_pdhg.cpp)
     target_link_libraries(test_pdhg PRIVATE
@@ -43,7 +43,7 @@ if(CUPROX_HAS_CUDA)
         GTest::gtest_main
     )
     gtest_discover_tests(test_pdhg)
-    
+
     # ADMM solver tests
     add_executable(test_admm test_admm.cpp)
     target_link_libraries(test_admm PRIVATE
@@ -51,7 +51,7 @@ if(CUPROX_HAS_CUDA)
         GTest::gtest_main
     )
     gtest_discover_tests(test_admm)
-    
+
     # Scaling tests
     add_executable(test_scaling test_scaling.cpp)
     target_link_libraries(test_scaling PRIVATE

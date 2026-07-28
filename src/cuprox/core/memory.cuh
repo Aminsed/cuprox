@@ -35,7 +35,7 @@ void device_memset(T* ptr, int value, size_t count) {
 template <typename T>
 void copy_host_to_device(T* dst, const T* src, size_t count) {
     if (count > 0) {
-        CUPROX_CUDA_CHECK(cudaMemcpy(dst, src, count * sizeof(T), 
+        CUPROX_CUDA_CHECK(cudaMemcpy(dst, src, count * sizeof(T),
                                       cudaMemcpyHostToDevice));
     }
 }
@@ -43,7 +43,7 @@ void copy_host_to_device(T* dst, const T* src, size_t count) {
 template <typename T>
 void copy_device_to_host(T* dst, const T* src, size_t count) {
     if (count > 0) {
-        CUPROX_CUDA_CHECK(cudaMemcpy(dst, src, count * sizeof(T), 
+        CUPROX_CUDA_CHECK(cudaMemcpy(dst, src, count * sizeof(T),
                                       cudaMemcpyDeviceToHost));
     }
 }
@@ -51,7 +51,7 @@ void copy_device_to_host(T* dst, const T* src, size_t count) {
 template <typename T>
 void copy_device_to_device(T* dst, const T* src, size_t count) {
     if (count > 0) {
-        CUPROX_CUDA_CHECK(cudaMemcpy(dst, src, count * sizeof(T), 
+        CUPROX_CUDA_CHECK(cudaMemcpy(dst, src, count * sizeof(T),
                                       cudaMemcpyDeviceToDevice));
     }
 }
@@ -60,7 +60,7 @@ template <typename T>
 class DevicePtr {
 public:
     DevicePtr() = default;
-    
+
     explicit DevicePtr(size_t count) : size_(count) {
         ptr_ = device_malloc<T>(count);
     }

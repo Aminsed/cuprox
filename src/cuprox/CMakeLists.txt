@@ -23,7 +23,7 @@ if(CUPROX_HAS_CUDA)
         solvers/admm.cuh
         solvers/batch_pdhg.cuh
     )
-    
+
     set(CUPROX_CUDA_SOURCES
         core/dense_vector.cu
         linalg/projections.cu
@@ -32,26 +32,26 @@ if(CUPROX_HAS_CUDA)
         solvers/admm.cu
         solvers/batch_pdhg.cu
     )
-    
+
     add_library(cuprox_core STATIC
         ${CUPROX_CUDA_SOURCES}
         ${CUPROX_CORE_HEADERS}
         ${CUPROX_CUDA_HEADERS}
     )
-    
+
     target_compile_definitions(cuprox_core PUBLIC CUPROX_HAS_CUDA)
-    
+
     set_target_properties(cuprox_core PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
     )
-    
+
     target_link_libraries(cuprox_core PUBLIC
         CUDA::cudart
         CUDA::cublas
         CUDA::cusparse
     )
-    
+
 else()
     # CPU-only build - minimal header-only
     add_library(cuprox_core INTERFACE)

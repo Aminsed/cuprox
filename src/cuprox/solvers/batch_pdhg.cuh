@@ -38,12 +38,12 @@ struct BatchPdhgResult {
 
 /**
  * @brief Batch LP problem definition
- * 
+ *
  * Solves batch_size LP problems of the form:
  *   minimize    c[i]'x
  *   subject to  A*x = b[i]   (same A for all problems)
  *               lb <= x <= ub (same bounds for all)
- * 
+ *
  * This is the common case for MPC, portfolio, etc.
  */
 template <typename T>
@@ -60,10 +60,10 @@ struct BatchLPProblem {
 
 /**
  * @brief Batch PDHG Solver for Linear Programs
- * 
+ *
  * Solves many LPs in parallel on GPU. All problems share the same
  * constraint matrix A and bounds, but have different c and b.
- * 
+ *
  * This is extremely efficient for:
  * - Model Predictive Control (many horizons)
  * - Monte Carlo scenario optimization
@@ -73,13 +73,13 @@ template <typename T>
 class BatchPdhgSolver {
 public:
     BatchPdhgSolver() = default;
-    explicit BatchPdhgSolver(const BatchPdhgSettings<T>& settings) 
+    explicit BatchPdhgSolver(const BatchPdhgSettings<T>& settings)
         : settings_(settings) {}
-    
+
     BatchPdhgResult<T> solve(BatchLPProblem<T>& problem);
-    
-    void set_settings(const BatchPdhgSettings<T>& settings) { 
-        settings_ = settings; 
+
+    void set_settings(const BatchPdhgSettings<T>& settings) {
+        settings_ = settings;
     }
 
 private:

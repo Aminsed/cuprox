@@ -91,12 +91,12 @@ __global__ void batch_objective_kernel(
 ) {
     Index b = blockIdx.x;  // One block per problem
     if (b >= batch_size) return;
-    
+
     __shared__ T sdata[256];
-    
+
     Index tid = threadIdx.x;
     Index offset = b * n;
-    
+
     // Each thread computes partial dot product
     T sum = T(0);
     for (Index j = tid; j < n; j += blockDim.x) {
@@ -104,7 +104,7 @@ __global__ void batch_objective_kernel(
     }
     sdata[tid] = sum;
     __syncthreads();
-    
+
     // Reduction
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
@@ -112,7 +112,7 @@ __global__ void batch_objective_kernel(
         }
         __syncthreads();
     }
-    
+
     if (tid == 0) {
         objectives[b] = sdata[0];
     }
@@ -128,12 +128,12 @@ __global__ void batch_residual_kernel(
 ) {
     Index b = blockIdx.x;
     if (b >= batch_size) return;
-    
+
     __shared__ T sdata[256];
-    
+
     Index tid = threadIdx.x;
     Index offset = b * m;
-    
+
     T sum = T(0);
     for (Index j = tid; j < m; j += blockDim.x) {
         T val = r[offset + j];
@@ -141,14 +141,14 @@ __global__ void batch_residual_kernel(
     }
     sdata[tid] = sum;
     __syncthreads();
-    
+
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
             sdata[tid] += sdata[tid + s];
         }
         __syncthreads();
     }
-    
+
     if (tid == 0) {
         residuals[b] = sqrt(sdata[0]);
     }
@@ -208,10 +208,10 @@ __global__ void batch_check_convergence_kernel(
 ) {
     Index b = blockIdx.x * blockDim.x + threadIdx.x;
     if (b >= batch_size) return;
-    
+
     // Skip if already converged
     if (statuses[b] == 0) return;  // 0 = Optimal
-    
+
     // Scale each tolerance by the quantity it measures, as OSQP does. The old
     // `eps_abs + eps_rel` ignored problem scale entirely, so the same absolute
     // threshold was applied whether the residual was of order 1 or 1e6.
@@ -313,16 +313,16 @@ void batched_spmv_transpose(
 template <typename T>
 BatchPdhgResult<T> BatchPdhgSolver<T>::solve(BatchLPProblem<T>& problem) {
     auto start_time = std::chrono::high_resolution_clock::now();
-    
+
     Index batch_size = problem.batch_size;
     Index n = problem.n;
     Index m = problem.m;
-    
+
     // Compute step sizes
     T norm_A = estimate_operator_norm(*problem.A, 20);
     T tau = T(0.9) / norm_A;
     T sigma = T(0.9) / norm_A;
-    
+
     // Allocate batched arrays
     DevicePtr<T> x(batch_size * n);
     DevicePtr<T> x_prev(batch_size * n);
@@ -338,26 +338,26 @@ BatchPdhgResult<T> BatchPdhgSolver<T>::solve(BatchLPProblem<T>& problem) {
     DevicePtr<int> iterations(batch_size);
     DevicePtr<T> scale_primal(batch_size);
     DevicePtr<T> scale_dual(batch_size);
-    
+
     Index total_n = batch_size * n;
     Index total_m = batch_size * m;
     int blocks_n = (total_n + kBlockSize - 1) / kBlockSize;
     int blocks_m = (total_m + kBlockSize - 1) / kBlockSize;
     int blocks_batch = (batch_size + kBlockSize - 1) / kBlockSize;
-    
+
     // Initialize
     batch_kernels::init_zero_kernel<<<blocks_n, kBlockSize>>>(x.get(), total_n);
     batch_kernels::init_zero_kernel<<<blocks_m, kBlockSize>>>(y.get(), total_m);
-    
+
     // Initialise statuses to MaxIterations. cudaMemset writes bytes, so it
     // cannot be used to store the value 3 in an int.
     batch_kernels::batch_fill_int_kernel<<<blocks_batch, kBlockSize>>>(
         statuses.get(), static_cast<int>(Status::MaxIterations), batch_size);
-    
+
     // Set iterations to 0
     cudaMemset(iterations.get(), 0, batch_size * sizeof(int));
     CUPROX_CUDA_CHECK_LAST();
-    
+
     // Main PDHG loop
     for (int iter = 1; iter <= settings_.max_iters; ++iter) {
         // Save previous iterates
@@ -365,33 +365,33 @@ BatchPdhgResult<T> BatchPdhgSolver<T>::solve(BatchLPProblem<T>& problem) {
             x_prev.get(), x.get(), total_n);
         batch_kernels::batch_copy_kernel<<<blocks_m, kBlockSize>>>(
             y_prev.get(), y.get(), total_m);
-        
+
         // Compute A' * y (batched)
         batched_spmv_transpose(*problem.A, y.get(), Aty.get(), batch_size, n, m);
-        
+
         // Primal update: x = proj(x - tau*(c + A'y))
         batch_kernels::batch_primal_update_kernel<<<blocks_n, kBlockSize>>>(
             x.get(), x_prev.get(), problem.c_batch.get(), Aty.get(),
             problem.lb->data(), problem.ub->data(), tau, batch_size, n);
-        
+
         // Extrapolation: x_bar = 2*x - x_prev
         batch_kernels::batch_extrapolation_kernel<<<blocks_n, kBlockSize>>>(
             x_bar.get(), x.get(), x_prev.get(), total_n);
-        
+
         // Compute A * x_bar (batched)
         batched_spmv(*problem.A, x_bar.get(), Ax.get(), batch_size, n, m);
-        
+
         // Dual update: y = y + sigma*(Ax - b)
         batch_kernels::batch_dual_update_kernel<<<blocks_m, kBlockSize>>>(
             y.get(), y_prev.get(), Ax.get(), problem.b_batch.get(), sigma, total_m);
-        
+
         CUPROX_CUDA_CHECK_LAST();
-        
+
         // Check convergence periodically
         if (iter % settings_.check_interval == 0) {
             // Compute A * x for residuals
             batched_spmv(*problem.A, x.get(), Ax.get(), batch_size, n, m);
-            
+
             // Primal residual ||Ax - b|| per problem.
             DevicePtr<T> residual_vec(total_m);
             batch_kernels::batch_primal_residual_vec_kernel<<<blocks_m, kBlockSize>>>(
@@ -423,23 +423,23 @@ BatchPdhgResult<T> BatchPdhgSolver<T>::solve(BatchLPProblem<T>& problem) {
                 statuses.get(), iterations.get(), primal_res.get(), dual_res.get(),
                 scale_primal.get(), scale_dual.get(),
                 settings_.eps_abs, settings_.eps_rel, iter, batch_size);
-            
+
             CUPROX_CUDA_CHECK_LAST();
         }
     }
-    
+
     // Final: compute A*x for objective computation
     batched_spmv(*problem.A, x.get(), Ax.get(), batch_size, n, m);
-    
+
     // Compute objectives
-    batch_kernels::batch_objective_kernel<<<batch_size, kBlockSize, 
-        kBlockSize * sizeof(T)>>>(objectives.get(), problem.c_batch.get(), 
+    batch_kernels::batch_objective_kernel<<<batch_size, kBlockSize,
+        kBlockSize * sizeof(T)>>>(objectives.get(), problem.c_batch.get(),
                                    x.get(), batch_size, n);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     auto end_time = std::chrono::high_resolution_clock::now();
     double elapsed = std::chrono::duration<double>(end_time - start_time).count();
-    
+
     // Prepare result
     BatchPdhgResult<T> result;
     result.x = std::move(x);
@@ -451,7 +451,7 @@ BatchPdhgResult<T> BatchPdhgSolver<T>::solve(BatchLPProblem<T>& problem) {
     result.n = n;
     result.m = m;
     result.total_solve_time = elapsed;
-    
+
     return result;
 }
 
@@ -473,14 +473,14 @@ BatchLPProblem<T> make_batch_lp(
     problem.batch_size = batch_size;
     problem.n = n;
     problem.m = m;
-    
+
     // Copy batched data to device
     problem.c_batch.reset(batch_size * n);
     problem.b_batch.reset(batch_size * m);
-    
+
     copy_host_to_device(problem.c_batch.get(), c_batch_host, batch_size * n);
     copy_host_to_device(problem.b_batch.get(), b_batch_host, batch_size * m);
-    
+
     return problem;
 }
 

@@ -1,7 +1,7 @@
 /**
  * @file error.hpp
  * @brief Error handling utilities for cuProx
- * 
+ *
  * Provides exception classes and CUDA error checking macros.
  */
 
@@ -70,12 +70,12 @@ public:
     CudaError(cudaError_t error, const char* file, int line)
         : CuproxError(format_message(error, file, line))
         , error_(error) {}
-    
+
     cudaError_t error() const { return error_; }
-    
+
 private:
     cudaError_t error_;
-    
+
     static std::string format_message(cudaError_t error, const char* file, int line) {
         std::ostringstream ss;
         ss << "CUDA error at " << file << ":" << line << ": "
@@ -92,12 +92,12 @@ public:
     CusparseError(cusparseStatus_t status, const char* file, int line)
         : CuproxError(format_message(status, file, line))
         , status_(status) {}
-    
+
     cusparseStatus_t status() const { return status_; }
-    
+
 private:
     cusparseStatus_t status_;
-    
+
     static std::string format_message(cusparseStatus_t status, const char* file, int line) {
         std::ostringstream ss;
         ss << "cuSPARSE error at " << file << ":" << line << ": "
@@ -114,12 +114,12 @@ public:
     CublasError(cublasStatus_t status, const char* file, int line)
         : CuproxError(format_message(status, file, line))
         , status_(status) {}
-    
+
     cublasStatus_t status() const { return status_; }
-    
+
 private:
     cublasStatus_t status_;
-    
+
     static std::string format_message(cublasStatus_t status, const char* file, int line) {
         std::ostringstream ss;
         ss << "cuBLAS error at " << file << ":" << line << ": "

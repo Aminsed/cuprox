@@ -26,8 +26,8 @@ __global__ void project_nonneg_kernel(T* x, Index n) {
 }
 
 template <typename T>
-__global__ void gradient_step_project_kernel(T* y, const T* x, T alpha, 
-                                              const T* grad, const T* lb, 
+__global__ void gradient_step_project_kernel(T* y, const T* x, T alpha,
+                                              const T* grad, const T* lb,
                                               const T* ub, Index n) {
     Index i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
@@ -41,21 +41,21 @@ __global__ void gradient_step_project_kernel(T* y, const T* x, T alpha,
 template <typename T>
 __global__ void reduce_max_abs_kernel(const T* x, T* partial_max, Index n) {
     __shared__ T sdata[256];
-    
+
     Index tid = threadIdx.x;
     Index i = blockIdx.x * blockDim.x + tid;
-    
+
     T val = (i < n) ? fabs(x[i]) : T(0);
     sdata[tid] = val;
     __syncthreads();
-    
+
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
             sdata[tid] = fmax(sdata[tid], sdata[tid + s]);
         }
         __syncthreads();
     }
-    
+
     if (tid == 0) {
         partial_max[blockIdx.x] = sdata[0];
     }
@@ -65,10 +65,10 @@ template <typename T>
 __global__ void reduce_box_violation_kernel(const T* x, const T* lb, const T* ub,
                                              T* partial_max, Index n) {
     __shared__ T sdata[256];
-    
+
     Index tid = threadIdx.x;
     Index i = blockIdx.x * blockDim.x + tid;
-    
+
     T violation = T(0);
     if (i < n) {
         T over = x[i] - ub[i];
@@ -77,14 +77,14 @@ __global__ void reduce_box_violation_kernel(const T* x, const T* lb, const T* ub
     }
     sdata[tid] = violation;
     __syncthreads();
-    
+
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
             sdata[tid] = fmax(sdata[tid], sdata[tid + s]);
         }
         __syncthreads();
     }
-    
+
     if (tid == 0) {
         partial_max[blockIdx.x] = sdata[0];
     }
@@ -95,14 +95,14 @@ __global__ void reduce_box_violation_kernel(const T* x, const T* lb, const T* ub
 constexpr int kBlockSize = 256;
 
 template <typename T>
-void project_box(DeviceVector<T>& x, 
+void project_box(DeviceVector<T>& x,
                  const DeviceVector<T>& lb,
                  const DeviceVector<T>& ub) {
     Index n = x.size();
     CUPROX_ASSERT(lb.size() == n && ub.size() == n, "project_box: size mismatch");
-    
+
     if (n == 0) return;
-    
+
     int num_blocks = (n + kBlockSize - 1) / kBlockSize;
     kernels::project_box_kernel<<<num_blocks, kBlockSize>>>(
         x.data(), lb.data(), ub.data(), n);
@@ -113,7 +113,7 @@ template <typename T>
 void project_nonnegative(DeviceVector<T>& x) {
     Index n = x.size();
     if (n == 0) return;
-    
+
     int num_blocks = (n + kBlockSize - 1) / kBlockSize;
     kernels::project_nonneg_kernel<<<num_blocks, kBlockSize>>>(x.data(), n);
     CUPROX_CUDA_CHECK_LAST();
@@ -127,13 +127,13 @@ void gradient_step_and_project(DeviceVector<T>& y,
                                 const DeviceVector<T>& lb,
                                 const DeviceVector<T>& ub) {
     Index n = x.size();
-    CUPROX_ASSERT(y.size() == n && grad.size() == n, 
+    CUPROX_ASSERT(y.size() == n && grad.size() == n,
                   "gradient_step_and_project: size mismatch");
     CUPROX_ASSERT(lb.size() == n && ub.size() == n,
                   "gradient_step_and_project: bounds size mismatch");
-    
+
     if (n == 0) return;
-    
+
     int num_blocks = (n + kBlockSize - 1) / kBlockSize;
     kernels::gradient_step_project_kernel<<<num_blocks, kBlockSize>>>(
         y.data(), x.data(), alpha, grad.data(), lb.data(), ub.data(), n);
@@ -144,18 +144,18 @@ template <typename T>
 T norm_inf(const DeviceVector<T>& x) {
     Index n = x.size();
     if (n == 0) return T(0);
-    
+
     int num_blocks = (n + kBlockSize - 1) / kBlockSize;
-    
+
     DevicePtr<T> d_partial(num_blocks);
-    
+
     kernels::reduce_max_abs_kernel<<<num_blocks, kBlockSize>>>(
         x.data(), d_partial.get(), n);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     std::vector<T> h_partial(num_blocks);
     copy_device_to_host(h_partial.data(), d_partial.get(), num_blocks);
-    
+
     T result = T(0);
     for (int i = 0; i < num_blocks; ++i) {
         result = std::max(result, h_partial[i]);
@@ -169,20 +169,20 @@ T box_violation(const DeviceVector<T>& x,
                 const DeviceVector<T>& ub) {
     Index n = x.size();
     CUPROX_ASSERT(lb.size() == n && ub.size() == n, "box_violation: size mismatch");
-    
+
     if (n == 0) return T(0);
-    
+
     int num_blocks = (n + kBlockSize - 1) / kBlockSize;
-    
+
     DevicePtr<T> d_partial(num_blocks);
-    
+
     kernels::reduce_box_violation_kernel<<<num_blocks, kBlockSize>>>(
         x.data(), lb.data(), ub.data(), d_partial.get(), n);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     std::vector<T> h_partial(num_blocks);
     copy_device_to_host(h_partial.data(), d_partial.get(), num_blocks);
-    
+
     T result = T(0);
     for (int i = 0; i < num_blocks; ++i) {
         result = std::max(result, h_partial[i]);
@@ -191,7 +191,7 @@ T box_violation(const DeviceVector<T>& x,
 }
 
 // Explicit instantiations
-template void project_box<float>(DeviceVector<float>&, 
+template void project_box<float>(DeviceVector<float>&,
                                   const DeviceVector<float>&,
                                   const DeviceVector<float>&);
 template void project_box<double>(DeviceVector<double>&,

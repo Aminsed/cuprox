@@ -41,9 +41,9 @@ py::dict solve_lp_pdhg(
     auto u_buf = u.request();
     auto lb_buf = lb.request();
     auto ub_buf = ub.request();
-    
+
     cuprox::Index nnz = static_cast<cuprox::Index>(v_buf.size);
-    
+
     // Create LP problem
     cuprox::LPProblem<double> lp;
     lp.A = cuprox::CsrMatrix<double>::from_csr(
@@ -52,18 +52,18 @@ py::dict solve_lp_pdhg(
         static_cast<cuprox::Index*>(ci_buf.ptr),
         static_cast<double*>(v_buf.ptr)
     );
-    
+
     // Resize and copy vectors to device
     lp.c.resize(num_cols);
     lp.c.copy_from_host(static_cast<double*>(c_buf.ptr), num_cols);
-    
-    
+
+
     lp.lb.resize(num_cols);
     lp.lb.copy_from_host(static_cast<double*>(lb_buf.ptr), num_cols);
-    
+
     lp.ub.resize(num_cols);
     lp.ub.copy_from_host(static_cast<double*>(ub_buf.ptr), num_cols);
-    
+
     // Row bounds as given. This previously copied b into both l and u, which
     // silently turned every inequality the caller asked for into an equality.
     lp.l.resize(num_rows);
@@ -76,7 +76,7 @@ py::dict solve_lp_pdhg(
     // the solver itself reads l and u.
     lp.b.resize(num_rows);
     lp.b.copy_from_host(static_cast<double*>(l_buf.ptr), num_rows);
-    
+
     // Configure solver
     cuprox::PdhgSettings<double> settings;
     settings.max_iters = max_iters;
@@ -84,24 +84,24 @@ py::dict solve_lp_pdhg(
     settings.eps_rel = eps_rel;
     settings.verbose = verbose;
     settings.scaling = scaling;
-    
+
     // Solve
     cuprox::PdhgSolver<double> solver(settings);
     auto result = solver.solve(lp);
-    
+
     // Convert result to Python
     auto x_host = result.x.to_host();
     auto y_host = result.y.to_host();
-    
+
     py::array_t<double> x_out(x_host.size());
     py::array_t<double> y_out(y_host.size());
-    
+
     std::copy(x_host.begin(), x_host.end(), x_out.mutable_data());
     std::copy(y_host.begin(), y_host.end(), y_out.mutable_data());
-    
+
     // Status string
     std::string status_str = cuprox::status_to_string(result.status);
-    
+
     py::dict out;
     out["x"] = x_out;
     out["y"] = y_out;
@@ -111,7 +111,7 @@ py::dict solve_lp_pdhg(
     out["dual_residual"] = result.dual_res;
     out["iterations"] = result.iterations;
     out["solve_time"] = result.solve_time;
-    
+
     return out;
 }
 
@@ -194,7 +194,7 @@ PYBIND11_MODULE(_core, m) {
         auto u_buf = u.request();
         auto var_lb_buf = var_lb.request();
         auto var_ub_buf = var_ub.request();
-        
+
         // Create QP problem
         cuprox::QPProblem<double> qp;
         qp.P = cuprox::CsrMatrix<double>::from_csr(
@@ -209,20 +209,20 @@ PYBIND11_MODULE(_core, m) {
             static_cast<cuprox::Index*>(A_ci.ptr),
             static_cast<double*>(A_v.ptr)
         );
-        
+
         qp.q.resize(A_n);
         qp.q.copy_from_host(static_cast<double*>(q_buf.ptr), A_n);
         qp.l.resize(A_m);
         qp.l.copy_from_host(static_cast<double*>(l_buf.ptr), A_m);
         qp.u.resize(A_m);
         qp.u.copy_from_host(static_cast<double*>(u_buf.ptr), A_m);
-        
+
         // Variable bounds
         qp.lb.resize(A_n);
         qp.lb.copy_from_host(static_cast<double*>(var_lb_buf.ptr), A_n);
         qp.ub.resize(A_n);
         qp.ub.copy_from_host(static_cast<double*>(var_ub_buf.ptr), A_n);
-        
+
         // Configure solver
         cuprox::AdmmSettings<double> settings;
         settings.max_iters = max_iters;
@@ -230,21 +230,21 @@ PYBIND11_MODULE(_core, m) {
         settings.eps_rel = eps_rel;
         settings.rho = rho;
         settings.verbose = verbose;
-        
+
         // Solve
         cuprox::AdmmSolver<double> solver(settings);
         auto result = solver.solve(qp);
-        
+
         // Convert result
         auto x_host = result.x.to_host();
         auto y_host = result.y.to_host();
-        
+
         py::array_t<double> x_out(x_host.size());
         py::array_t<double> y_out(y_host.size());
-        
+
         std::copy(x_host.begin(), x_host.end(), x_out.mutable_data());
         std::copy(y_host.begin(), y_host.end(), y_out.mutable_data());
-        
+
         py::dict out;
         out["x"] = x_out;
         out["y"] = y_out;
@@ -254,7 +254,7 @@ PYBIND11_MODULE(_core, m) {
         out["dual_residual"] = result.dual_res;
         out["iterations"] = result.iterations;
         out["solve_time"] = result.solve_time;
-        
+
         return out;
     },
         py::arg("P_row_offsets"),
