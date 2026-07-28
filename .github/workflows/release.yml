@@ -34,11 +34,15 @@ jobs:
         # target machine, so a complete sdist is load-bearing.
         run: |
           set -euo pipefail
+          # Listed once into a file rather than piped per-file: `tar | grep -q`
+          # makes grep exit on its first match, tar dies of SIGPIPE, and
+          # pipefail then reports the whole check as a failure.
+          tar tzf dist/*.tar.gz > "$RUNNER_TEMP/sdist-listing.txt"
           for f in CMakeLists.txt src/bindings/module.cpp \
                    src/cuprox/solvers/admm.cu src/cuprox/solvers/pdhg.cu \
                    src/cuprox/preprocess/scaling.cu \
                    python/cuprox/__init__.py python/cuprox/_version.py; do
-            tar tzf dist/*.tar.gz | grep -q "/$f$" \
+            grep -q "/$f$" "$RUNNER_TEMP/sdist-listing.txt" \
               || { echo "::error::sdist is missing $f"; exit 1; }
           done
           echo "sdist contains every file needed to build"
