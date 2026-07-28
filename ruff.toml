@@ -2,7 +2,8 @@
 # https://docs.astral.sh/ruff/
 
 target-version = "py39"
-line-length = 88
+# Matches [tool.black] in pyproject.toml; they disagreed before.
+line-length = 100
 
 [lint]
 select = [

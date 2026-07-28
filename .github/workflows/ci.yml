@@ -18,18 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          
+
       - name: Install linters
         run: pip install ruff black
-        
+
       - name: Check formatting with Black
         run: black --check --diff python/ tests/python/ benchmarks/
-        
+
       - name: Lint with Ruff
         run: ruff check python/ tests/python/ benchmarks/
 
@@ -38,17 +38,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          
+
       - name: Install dependencies
         run: |
           pip install mypy numpy scipy
           pip install types-setuptools
-          
+
       - name: Run mypy
         run: mypy python/cuprox --ignore-missing-imports --disable-error-code=no-any-return --disable-error-code=no-untyped-def
         continue-on-error: true  # Don't fail CI yet, building up types
@@ -64,21 +64,21 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          
+
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install numpy scipy pytest pytest-cov
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          
+
       # CPU-only build. GitHub runners have no GPU, so this exercises the scipy
       # fallback, not the CUDA kernels. That distinction matters: CI previously
       # installed `python/` alone, which never built the extension, so a green
@@ -100,7 +100,7 @@ jobs:
       - name: Run tests
         run: |
           pytest tests/python -v -m "not gpu" --tb=short
-          
+
       - name: Run tests with coverage
         if: matrix.python-version == '3.11'
         run: |
@@ -108,7 +108,7 @@ jobs:
           # solver-independent suites, so its coverage number reflects that and
           # nothing else. Meaningful coverage needs a GPU runner.
           pytest tests/python -v -m "not gpu" --cov=cuprox --cov-report=xml --cov-fail-under=0
-          
+
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         if: matrix.python-version == '3.11'
@@ -125,18 +125,18 @@ jobs:
     needs: [test-cpu]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          
+
       - name: Install build tools
         run: pip install build
-        
+
       - name: Build sdist
         run: python -m build --sdist
-        
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -152,18 +152,18 @@ jobs:
   #   runs-on: [self-hosted, gpu]
   #   needs: [lint]
   #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  #   
+  #
   #   steps:
   #     - uses: actions/checkout@v4
-  #     
+  #
   #     - name: Check CUDA
   #       run: nvidia-smi
-  #       
+  #
   #     - name: Install dependencies
   #       run: |
   #         pip install numpy scipy pytest
   #         pip install -e .
-  #         
+  #
   #     - name: Run all tests
   #       run: pytest tests/python -v --tb=short
 

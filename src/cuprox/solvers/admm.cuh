@@ -24,13 +24,13 @@ struct AdmmSettings {
     // off is the wrong default.
     bool scaling = true;
     int scaling_iters = 10;
-    
+
     // ADMM-specific parameters
     T rho = T(1.0);              // Penalty parameter (0 = auto)
     bool adaptive_rho = true;    // Adapt rho during solve
     T rho_min = T(1e-6);
     T rho_max = T(1e6);
-    
+
     // CG settings for x-update
     int cg_max_iters = 100;
     T cg_tol = T(1e-10);
@@ -54,7 +54,7 @@ struct AdmmResult {
 
 /**
  * @brief QP problem definition for ADMM
- * 
+ *
  * Standard form:
  *   minimize    (1/2)x'Px + q'x
  *   subject to  l <= Ax <= u
@@ -69,21 +69,21 @@ struct QPProblem {
     DeviceVector<T> u;      // Upper bound on Ax (m,)
     DeviceVector<T> lb;     // Variable lower bounds (n,)
     DeviceVector<T> ub;     // Variable upper bounds (n,)
-    
+
     Index num_vars() const { return q.size(); }
     Index num_constraints() const { return A.num_rows(); }
 };
 
 /**
  * @brief ADMM Solver for Quadratic Programs
- * 
+ *
  * Solves QP using Alternating Direction Method of Multipliers.
- * 
+ *
  * Algorithm per iteration:
  *   x_{k+1} = (P + ρA'A)^{-1} (ρA'z_k - A'y_k - q)
  *   z_{k+1} = proj_{[l,u]}(Ax_{k+1} + y_k/ρ)
  *   y_{k+1} = y_k + ρ(Ax_{k+1} - z_{k+1})
- * 
+ *
  * The x-update is solved using Conjugate Gradient.
  */
 template <typename T>
@@ -91,9 +91,9 @@ class AdmmSolver {
 public:
     AdmmSolver() = default;
     explicit AdmmSolver(const AdmmSettings<T>& settings) : settings_(settings) {}
-    
+
     AdmmResult<T> solve(QPProblem<T>& problem);
-    
+
     void set_settings(const AdmmSettings<T>& settings) { settings_ = settings; }
     const AdmmSettings<T>& settings() const { return settings_; }
 
@@ -108,22 +108,22 @@ private:
     T dual_norm(const DeviceVector<T>& v);
     void update_rho();
     void solve_unconstrained();  // Special case for m=0
-    
+
     AdmmSettings<T> settings_;
-    
+
     // Problem dimensions
     Index n_ = 0;  // Variables
     Index m_ = 0;  // Constraints
-    
+
     // ADMM parameter
     T rho_ = T(1.0);
-    
+
     // Iterates
     DeviceVector<T> x_;
     DeviceVector<T> z_;
     DeviceVector<T> z_prev_;
     DeviceVector<T> y_;
-    
+
     // Workspace
     DeviceVector<T> Ax_;      // A * x
     DeviceVector<T> Px_;      // P * x
@@ -134,12 +134,12 @@ private:
     ScalingFactors<T> scaling_;
     DeviceVector<T> res_m_;   // Workspace for unscaled norms (m,)
     DeviceVector<T> res_n_;   // Workspace for unscaled norms (n,)
-    
+
     // CG workspace
     DeviceVector<T> cg_r_;    // Residual
     DeviceVector<T> cg_p_;    // Search direction
     DeviceVector<T> cg_Ap_;   // Matrix-vector product
-    
+
     // Problem data
     CsrMatrix<T>* P_ = nullptr;
     CsrMatrix<T>* A_ = nullptr;
@@ -148,11 +148,11 @@ private:
     DeviceVector<T>* u_ = nullptr;           // Constraint bounds
     DeviceVector<T>* problem_lb_ = nullptr;  // Variable lower bounds
     DeviceVector<T>* problem_ub_ = nullptr;  // Variable upper bounds
-    
+
     // Residuals
     T primal_res_ = T(0);
     T dual_res_ = T(0);
-    
+
     // Iteration count
     int iter_ = 0;
 };

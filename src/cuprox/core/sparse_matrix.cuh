@@ -68,7 +68,7 @@ public:
                                const T* values);
 
     // SpMV: y = alpha * A * x + beta * y
-    void spmv(T alpha, const DeviceVector<T>& x, 
+    void spmv(T alpha, const DeviceVector<T>& x,
               T beta, DeviceVector<T>& y) const;
 
     // SpMV transpose: y = alpha * A^T * x + beta * y
@@ -98,7 +98,7 @@ void CsrMatrix<T>::create_descriptors() {
     if (num_rows_ == 0 || num_cols_ == 0) return;
 
     cudaDataType value_type = (sizeof(T) == 4) ? CUDA_R_32F : CUDA_R_64F;
-    
+
     CUPROX_CUSPARSE_CHECK(cusparseCreateCsr(
         &mat_descr_,
         num_rows_, num_cols_, nnz_,
@@ -159,9 +159,9 @@ void CsrMatrix<T>::spmv(T alpha, const DeviceVector<T>& x,
     cudaDataType value_type = (sizeof(T) == 4) ? CUDA_R_32F : CUDA_R_64F;
 
     cusparseDnVecDescr_t x_descr, y_descr;
-    CUPROX_CUSPARSE_CHECK(cusparseCreateDnVec(&x_descr, x.size(), 
+    CUPROX_CUSPARSE_CHECK(cusparseCreateDnVec(&x_descr, x.size(),
         const_cast<T*>(x.data()), value_type));
-    CUPROX_CUSPARSE_CHECK(cusparseCreateDnVec(&y_descr, y.size(), 
+    CUPROX_CUSPARSE_CHECK(cusparseCreateDnVec(&y_descr, y.size(),
         y.data(), value_type));
 
     size_t buffer_size = 0;
@@ -198,9 +198,9 @@ void CsrMatrix<T>::spmv_transpose(T alpha, const DeviceVector<T>& x,
     cudaDataType value_type = (sizeof(T) == 4) ? CUDA_R_32F : CUDA_R_64F;
 
     cusparseDnVecDescr_t x_descr, y_descr;
-    CUPROX_CUSPARSE_CHECK(cusparseCreateDnVec(&x_descr, x.size(), 
+    CUPROX_CUSPARSE_CHECK(cusparseCreateDnVec(&x_descr, x.size(),
         const_cast<T*>(x.data()), value_type));
-    CUPROX_CUSPARSE_CHECK(cusparseCreateDnVec(&y_descr, y.size(), 
+    CUPROX_CUSPARSE_CHECK(cusparseCreateDnVec(&y_descr, y.size(),
         y.data(), value_type));
 
     size_t buffer_size = 0;

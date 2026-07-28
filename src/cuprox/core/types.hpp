@@ -1,7 +1,7 @@
 /**
  * @file types.hpp
  * @brief Common type definitions for cuProx
- * 
+ *
  * This file defines the fundamental types used throughout the cuProx library.
  * All types are designed for both CPU and GPU compatibility.
  */
@@ -57,25 +57,25 @@ constexpr Index kDefaultMaxIterations = 100000;
 enum class Status : int {
     /// Solution found within tolerance
     Optimal = 0,
-    
+
     /// Problem is primal infeasible
     PrimalInfeasible = 1,
-    
+
     /// Problem is dual infeasible (unbounded)
     DualInfeasible = 2,
-    
+
     /// Maximum iterations reached
     MaxIterations = 3,
-    
+
     /// Time limit reached
     TimeLimit = 4,
-    
+
     /// Numerical issues encountered
     NumericalError = 5,
-    
+
     /// Problem not yet solved
     Unsolved = -1,
-    
+
     /// Invalid problem data
     InvalidInput = -2,
 };
@@ -107,28 +107,28 @@ inline const char* status_to_string(Status status) {
 struct Settings {
     /// Convergence tolerance (primal/dual residual)
     Scalar tolerance = kDefaultTolerance;
-    
+
     /// Maximum number of iterations
     Index max_iterations = kDefaultMaxIterations;
-    
+
     /// Time limit in seconds (0 = no limit)
     Scalar time_limit = 0.0;
-    
+
     /// Enable Ruiz scaling
     bool scaling = true;
-    
+
     /// Number of scaling iterations
     Index scaling_iterations = 10;
-    
+
     /// Enable adaptive restart
     bool adaptive_restart = true;
-    
+
     /// Interval for convergence checks
     Index check_interval = 50;
-    
+
     /// Enable verbose output
     bool verbose = false;
-    
+
     /// Device ID to use (-1 = auto-select)
     int device_id = -1;
 };
@@ -143,25 +143,25 @@ struct Settings {
 struct SolveInfo {
     /// Final status
     Status status = Status::Unsolved;
-    
+
     /// Number of iterations performed
     Index iterations = 0;
-    
+
     /// Total solve time in seconds
     Scalar solve_time = 0.0;
-    
+
     /// Setup time (preprocessing) in seconds
     Scalar setup_time = 0.0;
-    
+
     /// Final primal residual
     Scalar primal_residual = kInfinity;
-    
+
     /// Final dual residual
     Scalar dual_residual = kInfinity;
-    
+
     /// Duality gap
     Scalar gap = kInfinity;
-    
+
     /// Objective value
     Scalar objective = 0.0;
 };

@@ -110,7 +110,7 @@ private:
 template <>
 inline void DeviceVector<double>::axpy(double alpha, const DeviceVector<double>& x) {
     CUPROX_CHECK_DIM(size_ == x.size_, "axpy: size mismatch");
-    CUPROX_CUBLAS_CHECK(cublasDaxpy(cublas_handle(), size_, &alpha, 
+    CUPROX_CUBLAS_CHECK(cublasDaxpy(cublas_handle(), size_, &alpha,
                                      x.data(), 1, data_.get(), 1));
 }
 
@@ -123,7 +123,7 @@ template <>
 inline double DeviceVector<double>::dot(const DeviceVector<double>& other) const {
     CUPROX_CHECK_DIM(size_ == other.size_, "dot: size mismatch");
     double result = 0.0;
-    CUPROX_CUBLAS_CHECK(cublasDdot(cublas_handle(), size_, 
+    CUPROX_CUBLAS_CHECK(cublasDdot(cublas_handle(), size_,
                                     data_.get(), 1, other.data(), 1, &result));
     return result;
 }
@@ -139,7 +139,7 @@ inline double DeviceVector<double>::norm2() const {
 template <>
 inline void DeviceVector<float>::axpy(float alpha, const DeviceVector<float>& x) {
     CUPROX_CHECK_DIM(size_ == x.size_, "axpy: size mismatch");
-    CUPROX_CUBLAS_CHECK(cublasSaxpy(cublas_handle(), size_, &alpha, 
+    CUPROX_CUBLAS_CHECK(cublasSaxpy(cublas_handle(), size_, &alpha,
                                      x.data(), 1, data_.get(), 1));
 }
 
@@ -152,7 +152,7 @@ template <>
 inline float DeviceVector<float>::dot(const DeviceVector<float>& other) const {
     CUPROX_CHECK_DIM(size_ == other.size_, "dot: size mismatch");
     float result = 0.0f;
-    CUPROX_CUBLAS_CHECK(cublasSdot(cublas_handle(), size_, 
+    CUPROX_CUBLAS_CHECK(cublasSdot(cublas_handle(), size_,
                                     data_.get(), 1, other.data(), 1, &result));
     return result;
 }
