@@ -220,6 +220,30 @@ def test_dimension_mismatch_is_rejected():
 # --------------------------------------------------------------------------
 
 
+def test_maximize_reports_the_right_sign():
+    """Model.maximize returned the negated objective.
+
+    _to_standard_form negates c to turn a maximisation into the minimisation the
+    solver expects, and nothing negated the objective back, so every maximize()
+    reported the correct magnitude with the wrong sign. x was always right,
+    which made it easy to miss.
+    """
+    model = Model()
+    x = model.add_var(lb=0, name="x")
+    y = model.add_var(lb=0, name="y")
+    model.add_constr(x + 2 * y <= 10)
+    model.add_constr(3 * x + y <= 15)
+    model.maximize(5 * x + 4 * y)
+
+    r = model.fit if False else model.solve()
+    assert r.status is Status.OPTIMAL
+    assert r.objective > 0, "maximize returned a negated objective"
+    assert abs(r.objective - 32.0) < 1e-2
+    np.testing.assert_allclose(np.asarray(r.x), [4.0, 3.0], atol=1e-2)
+    # And the objective must agree with the point it is reported alongside.
+    assert abs(r.objective - float(5 * r.x[0] + 4 * r.x[1])) < 1e-3
+
+
 def test_badly_scaled_max_sharpe_converges():
     """Daily excess returns are ~1e-3, which forced the transformed variable to
     ~1e3 against a covariance of ~1e-4. ADMM does not equilibrate, so it stalled
