@@ -218,16 +218,17 @@ mu = np.random.rand(n_assets)  # Expected returns
 Sigma = np.random.rand(n_assets, n_assets)
 Sigma = Sigma @ Sigma.T + np.eye(n_assets)  # Covariance (PSD)
 
-model = cuprox.Model()
-x = model.add_vars(n_assets, lb=0, name="weight")
-
-# Quadratic objective
-model.minimize(0.5 * x @ Sigma @ x - mu @ x)
-
-# Budget constraint
-model.add_constr(sum(x) == 1)
-
-result = model.solve()
+# The algebraic Model API is linear-only: add_vars() returns a plain list,
+# so a quadratic term cannot be written that way. QPs go through the matrix
+# interface, which takes P directly.
+result = cuprox.solve(
+    P=Sigma,                              # quadratic term
+    c=-mu,                                # linear term
+    A=np.ones((1, n_assets)),             # budget constraint
+    b=np.ones(1),
+    constraint_senses=["=="],
+    lb=np.zeros(n_assets),
+)
 print(f"Portfolio variance: {result.objective:.4f}")
 ```
 
@@ -273,6 +274,14 @@ result = model.solve(params={
 Measured on an NVIDIA RTX A6000 against OSQP on a 24-thread i9-12900K, QPs with
 `m = n/2`, tolerance `1e-4`, best of 3 runs. Every row was checked against OSQP's
 objective; relative disagreement stayed between `1e-7` and `1e-8` throughout.
+
+**These numbers are not currently reproducible from this repository.**
+`benchmarks/benchmark_qp.py` sweeps 100 to 5,000 variables and does not
+implement the best-of-three methodology above, so the rows beyond 5,000 come
+from a run whose script is not committed. Treat them as unverified until that
+is fixed; the two columns the committed script does cover are shown in
+[examples/01_getting_started.ipynb](examples/01_getting_started.ipynb), which
+executes end to end and asserts its own numbers.
 
 The result depends strongly on **sparsity pattern**, so both cases are given.
 
@@ -337,7 +346,7 @@ Unlike interior-point methods (which require Cholesky factorization — poorly p
 | Feature | cuProx | Gurobi | HiGHS | OSQP | SCS |
 |---------|--------|--------|-------|------|-----|
 | GPU acceleration | Yes (Full) | Limited | No | No | No |
-| Batch solving | Yes (Native) | No | No | No | No |
+| Batch solving | Sequential only | No | No | No | No |
 | LP support | Yes | Yes | Yes | No | Yes |
 | QP support | Yes | Yes | No | Yes | Yes |
 | MIP support | No | Yes | Yes | No | No |
@@ -385,7 +394,8 @@ class SolveResult:
 
 - [x] LP solver (PDHG)
 - [x] QP solver (ADMM)
-- [x] Batch solving
+- [ ] Batch solving — `solve_batch` loops in Python today. A batched PDHG
+      kernel exists in the C++ tree but is not wired up.
 - [x] CPU fallback
 - [x] PyTorch autograd integration
 - [ ] Windows support

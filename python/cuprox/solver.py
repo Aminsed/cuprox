@@ -107,6 +107,13 @@ def solve(
     else:
         constr_l = constr_u = np.array([])
 
+    if warm_start is not None:
+        raise NotImplementedError(
+            "warm_start is accepted by this signature but no solver reads it. "
+            "It is rejected rather than silently ignored; drop the argument to "
+            "solve from cold."
+        )
+
     is_qp = P is not None
     if is_qp:
         P = P.tocsr() if sparse.issparse(P) else np.asarray(P, dtype=np.float64)
@@ -353,11 +360,15 @@ def _solve_cpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
                 # HiGHS has no `tol` option; passing one raises OptimizeWarning.
                 options={"maxiter": max_iters},
             )
+            # scipy.optimize.linprog status codes. These names must exist
+            # on the enum: the previous spellings (INFEASIBLE, UNBOUNDED) did
+            # not, and the resulting AttributeError was caught below and
+            # reported as a numerical failure on problems HiGHS had solved.
             status_map = {
                 0: Status.OPTIMAL,
                 1: Status.MAX_ITERATIONS,
-                2: Status.INFEASIBLE,
-                3: Status.UNBOUNDED,
+                2: Status.PRIMAL_INFEASIBLE,
+                3: Status.DUAL_INFEASIBLE,
             }
             return SolveResult(
                 status=status_map.get(result.status, Status.NUMERICAL_ERROR),
@@ -367,6 +378,12 @@ def _solve_cpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
                 iterations=getattr(result, "nit", 0),
                 solve_time=0.0,
             )
+        except (AttributeError, TypeError, NameError, ImportError):
+            # A defect in this function, not a numerical failure. Converting
+            # these to NUMERICAL_ERROR is precisely how the broken status map
+            # above survived: every LP came back "numerical error" and looked
+            # like a hard problem rather than a bug.
+            raise
         except Exception as e:
             if verbose:
                 print(f"scipy LP failed: {e}")
