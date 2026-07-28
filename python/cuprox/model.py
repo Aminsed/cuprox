@@ -408,7 +408,7 @@ class Model:
         # Convert to matrix form
         A, b, c, lb, ub, senses = self._to_standard_form()
 
-        return solve(
+        result = solve(
             c=c,
             A=A,
             b=b,
@@ -418,6 +418,14 @@ class Model:
             params=params,
             warm_start=warm_start,
         )
+
+        # _to_standard_form negates c to turn a maximisation into the
+        # minimisation the solver expects. The objective has to be negated back,
+        # or every maximize() reports the correct value with the wrong sign.
+        if self._sense == "maximize" and result.objective is not None:
+            result.objective = -result.objective
+
+        return result
 
     def _to_standard_form(
         self,
