@@ -8,11 +8,10 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![CUDA 11.4+](https://img.shields.io/badge/CUDA-11.4+-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 
-*Solve large-scale Linear Programs and Quadratic Programs 10-100x faster on GPU*
+*A matrix-free GPU solver for sparse Linear and convex Quadratic Programs*
 
 [Installation](#installation) •
 [Quick Start](#quick-start) •
-[Documentation](#documentation) •
 [Benchmarks](#benchmarks) •
 [Contributing](#contributing)
 
@@ -28,20 +27,28 @@ cuProx is a GPU-accelerated optimization solver for **Linear Programs (LP)** and
 
 | Feature | Description |
 |---------|-------------|
-| **Fast** | 10-100x speedup over CPU solvers on large problems |
-| **Focused** | LP and QP only — does one thing exceptionally well |
-| **Batch solving** | Sequential today (see Known limitations) |
-| **ML-Ready** | PyTorch integration for differentiable optimization |
-| **Fallback** | Automatic CPU fallback if no GPU available |
+| **Matrix-free** | An iteration is a few sparse mat-vecs and some element-wise work, so its cost does not depend on the sparsity *pattern* |
+| **Scope** | LP and convex QP |
+| **Batch solving** | Sequential today (see [Known limitations](#known-limitations)) |
+| **PyTorch** | A QP as a differentiable layer; gradients for the objective parameters `P` and `q` only |
+| **Fallback** | CPU fallback via SciPy, which densifies — see [Known limitations](#known-limitations) |
+
+Where it stands relative to other solvers depends heavily on the problem; see
+[Benchmarks](#benchmarks) for what has actually been measured, and note that
+NVIDIA cuOpt is the more mature GPU LP/QP solver.
 
 ### When to Use cuProx
 
-**Use cuProx for:**
-- Large-scale LP/QP (100K+ variables)
-- Batch solving (many small problems)
-- Real-time optimization (MPC, trading)
-- ML training with optimization layers
-- Moderate accuracy requirements (1e-4 to 1e-6)
+**cuProx may suit you if:**
+- Your `A` is sparse but *unstructured*, so a factorising solver fills in badly
+- You want a QP inside a PyTorch model and can live with gradients only for
+  the objective parameters
+- Moderate accuracy is enough (1e-4 to 1e-6); first-order methods reach that
+  quickly and tighten slowly
+
+**Look elsewhere if:** your problem is small, banded or otherwise
+well-structured — a factorising CPU solver such as OSQP will beat this
+comfortably, as the benchmarks below show.
 
 **Not recommended for:**
 - Mixed-integer programming (use Gurobi, HiGHS)
@@ -87,48 +94,6 @@ print(cuprox.__cuda_available__)   # True means the GPU core is present
 See [INSTALL.md](INSTALL.md) for build options and troubleshooting.
 
 ---
-
-## Quick Start (GPU Build)
-
-**Prerequisites:**
-- CUDA Toolkit 11.4+
-- CMake 3.24+
-- Python 3.9+
-- C++ compiler (GCC 7+ or Clang)
-
-```bash
-# Clone the repository
-git clone https://github.com/Aminsed/cuprox.git
-cd cuprox
-
-# Build and install in one step, from the repository root
-pip install .
-```
-
-That single command builds the CUDA library and the extension and installs them
-together. Installing from `python/` instead will *not* build the extension: the
-package will import, report `__cuda_available__ == False`, and quietly fall back
-to SciPy.
-
-### Quick Start (CPU Only)
-
-For development or systems without CUDA:
-
-```bash
-git clone https://github.com/Aminsed/cuprox.git
-cd cuprox
-pip install -e python/
-```
-
-### Verify Installation
-
-```python
-import cuprox
-print(f"cuProx version: {cuprox.__version__}")
-print(f"CUDA available: {cuprox.__cuda_available__}")  # True = GPU ready!
-```
-
-For comprehensive installation instructions including troubleshooting, see [INSTALL.md](INSTALL.md).
 
 ---
 
@@ -271,42 +236,35 @@ result = model.solve(params={
 
 ## Benchmarks
 
-Measured on an NVIDIA RTX A6000 against OSQP on a 24-thread i9-12900K, QPs with
-`m = n/2`, tolerance `1e-4`, best of 3 runs. Every row was checked against OSQP's
-objective; relative disagreement stayed between `1e-7` and `1e-8` throughout.
-
-**These numbers are not currently reproducible from this repository.**
-`benchmarks/benchmark_qp.py` sweeps 100 to 5,000 variables and does not
-implement the best-of-three methodology above, so the rows beyond 5,000 come
-from a run whose script is not committed. Treat them as unverified until that
-is fixed; the two columns the committed script does cover are shown in
+The only performance numbers published here are the ones a committed,
+executable file produces. That file is
 [examples/01_getting_started.ipynb](examples/01_getting_started.ipynb), which
-executes end to end and asserts its own numbers.
+compares cuProx against OSQP on the same problems, asserts its own results, and
+writes the figure below.
 
-The result depends strongly on **sparsity pattern**, so both cases are given.
+![Sparsity pattern decides the winner, not problem size](https://raw.githubusercontent.com/Aminsed/cuprox/main/examples/benchmark_sparsity.png)
 
-| n | banded `A` | random `A` |
-|--:|-----------:|-----------:|
-| 1,000 | 0.02x | 0.54x |
-| 5,000 | 0.11x | **62x** |
-| 20,000 | 0.42x | - |
-| 100,000 | **2.05x** | - |
-| 400,000 | **3.56x** | - |
+The finding is qualitative and robust: **at the same problem size, the sparsity
+pattern decides the outcome.** With a banded `A`, cuProx is far *slower* than
+OSQP. With an unstructured random `A` of identical dimensions, it is faster —
+and the gap widens with size. Read the notebook for the numbers from a run you
+can repeat.
 
-Reading it honestly: cuProx is *slower* than a good CPU solver on small or
-well-structured problems, and much faster on large or awkwardly-structured ones.
+Earlier revisions of this README quoted a table reaching 400,000 variables and
+a "10-100x" headline. Neither is reproducible from anything in this repository,
+so both have been removed rather than left standing.
 
 The reason is structural rather than incidental. cuProx is matrix-free: a PDHG or
 ADMM iteration costs a few sparse mat-vecs and some element-wise work, and that
 cost is the same whatever the sparsity pattern looks like. OSQP factorises, which
 is superb when the factor stays sparse and expensive when it fills in. So the
 crossover is not really about problem size, it is about how badly the
-factorisation fills in - which is why the two columns above diverge so sharply at
-the same `n`.
+factorisation fills in - which is why the two
+cases in the figure above diverge so sharply at the same `n`.
 
-Reproduce with `python benchmarks/benchmark_qp.py`. Note that the GPU must be
-otherwise idle: benchmarking against a busy GPU inflated these numbers by 20-40x
-in early runs.
+`benchmarks/benchmark_qp.py` sweeps 100 to 5,000 variables. Whatever you
+measure, make sure the GPU is otherwise idle — a competing process changes
+these timings by more than any of the effects being measured.
 
 ## How It Works
 
@@ -338,19 +296,6 @@ Unlike interior-point methods (which require Cholesky factorization — poorly p
   variables a good CPU solver usually wins; see [Benchmarks](#benchmarks).
 - **Moderate accuracy.** First-order methods target `1e-4` to `1e-8`. For tighter
   tolerances use an interior-point solver.
-
----
-
-## Comparison with Other Solvers
-
-| Feature | cuProx | Gurobi | HiGHS | OSQP | SCS |
-|---------|--------|--------|-------|------|-----|
-| GPU acceleration | Yes (Full) | Limited | No | No | No |
-| Batch solving | Sequential only | No | No | No | No |
-| LP support | Yes | Yes | Yes | No | Yes |
-| QP support | Yes | Yes | No | Yes | Yes |
-| MIP support | No | Yes | Yes | No | No |
-| Open source | Yes (MIT) | No | Yes | Yes | Yes |
 
 ---
 
