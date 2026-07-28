@@ -46,32 +46,32 @@ if(NOT CUPROX_CPU_ONLY)
 
     include(CheckLanguage)
     check_language(CUDA)
-    
+
     if(CMAKE_CUDA_COMPILER)
         enable_language(CUDA)
         message(STATUS "CUDA compiler found: ${CMAKE_CUDA_COMPILER}")
         message(STATUS "CUDA version: ${CMAKE_CUDA_COMPILER_VERSION}")
-        
+
         # CUDA standards
         set(CMAKE_CUDA_STANDARD 17)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-        
+
         # Target architectures: Volta (7.0) through Blackwell (10.0)
         # Users can override with -DCMAKE_CUDA_ARCHITECTURES="80;86;90"
         if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
             set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86;89;90")
         endif()
         message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
-        
+
         # CUDA flags
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
         set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -O3")
         set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -g")
-        
+
         # Find CUDA Toolkit
         find_package(CUDAToolkit REQUIRED)
         set(CUPROX_HAS_CUDA TRUE)
-        
+
     else()
         message(FATAL_ERROR
             "cuProx is a GPU solver and no CUDA compiler was found.\n"
@@ -155,7 +155,7 @@ if(CUPROX_BUILD_PYTHON)
                          PATHS "${_pybind_dir}" NO_DEFAULT_PATH)
         endif()
     endif()
-    
+
     if(NOT pybind11_FOUND)
         message(STATUS "pybind11 not found. Will be fetched.")
         include(FetchContent)
@@ -166,7 +166,7 @@ if(CUPROX_BUILD_PYTHON)
         )
         FetchContent_MakeAvailable(pybind11)
     endif()
-    
+
     add_subdirectory(src/bindings)
 endif()
 

@@ -206,7 +206,8 @@ class TwoStageLP:
         Solve the two-stage stochastic program.
 
         Args:
-            method: Solution method ('extensive', 'benders')
+            method: Solution method. Only 'extensive' (the deterministic
+                equivalent) is implemented.
             max_iters: Maximum iterations
             tolerance: Convergence tolerance
             verbose: Print progress
@@ -214,12 +215,9 @@ class TwoStageLP:
         Returns:
             TwoStageResult
         """
-        if method == "extensive":
-            return self._solve_extensive(max_iters, tolerance, verbose)
-        elif method == "benders":
-            return self._solve_benders(max_iters, tolerance, verbose)
-        else:
-            raise ValueError(f"Unknown method '{method}'")
+        if method != "extensive":
+            raise ValueError(f"Unknown method '{method}'; only 'extensive' is implemented")
+        return self._solve_extensive(max_iters, tolerance, verbose)
 
     def _solve_extensive(
         self,
@@ -307,16 +305,6 @@ class TwoStageLP:
             solve_time=solve_time,
             n_scenarios=n_s,
         )
-
-    def _solve_benders(
-        self,
-        max_iters: int,
-        tolerance: float,
-        verbose: bool,
-    ) -> TwoStageResult:
-        """Solve using Benders decomposition (L-shaped method)."""
-        # TODO: Implement Benders decomposition
-        raise NotImplementedError("Benders decomposition not yet implemented")
 
     def evaluate(self, x: np.ndarray) -> float:
         """

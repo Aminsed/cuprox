@@ -21,7 +21,7 @@ public:
     cusparseHandle_t cusparse() const { return cusparse_handle_; }
 
     int device_id() const { return device_id_; }
-    
+
     void synchronize() const {
         CUPROX_CUDA_CHECK(cudaDeviceSynchronize());
     }

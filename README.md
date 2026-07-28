@@ -264,7 +264,7 @@ result = model.solve(params={
     # Convergence
     "tolerance": 1e-6,        # Primal/dual residual tolerance
     "max_iterations": 100000, # Maximum iterations
-    
+
     # Device
     "device": "gpu",          # "gpu" (default) or "cpu" to force the fallback
     "verbose": True,          # Print an iteration log

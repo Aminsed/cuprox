@@ -111,10 +111,10 @@ __global__ void compute_primal_residual_kernel(
     Index m
 ) {
     __shared__ T sdata[256];
-    
+
     Index tid = threadIdx.x;
     Index i = blockIdx.x * blockDim.x + tid;
-    
+
     T viol = T(0);
     if (i < m) {
         const T proj = fmin(fmax(Ax[i], l[i]), u[i]);
@@ -123,14 +123,14 @@ __global__ void compute_primal_residual_kernel(
     T val = viol * viol;
     sdata[tid] = val;
     __syncthreads();
-    
+
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
             sdata[tid] += sdata[tid + s];
         }
         __syncthreads();
     }
-    
+
     if (tid == 0) {
         residual[blockIdx.x] = sdata[0];
     }
@@ -147,15 +147,15 @@ __global__ void compute_dual_residual_kernel(
     Index n
 ) {
     __shared__ T sdata[256];
-    
+
     Index tid = threadIdx.x;
     Index i = blockIdx.x * blockDim.x + tid;
-    
+
     T val = T(0);
     if (i < n) {
         // Reduced cost: r = c + A^T y
         T r = c[i] + Aty[i];
-        
+
         // For bounded variables, check complementarity
         T xi = x[i];
         if (xi <= lb[i] + T(1e-8)) {
@@ -170,17 +170,17 @@ __global__ void compute_dual_residual_kernel(
         }
         val = val * val;
     }
-    
+
     sdata[tid] = val;
     __syncthreads();
-    
+
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
             sdata[tid] += sdata[tid + s];
         }
         __syncthreads();
     }
-    
+
     if (tid == 0) {
         residual[blockIdx.x] = sdata[0];
     }
@@ -202,7 +202,7 @@ template <typename T>
 void PdhgSolver<T>::initialize(LPProblem<T>& problem) {
     n_ = problem.num_vars();
     m_ = problem.num_constraints();
-    
+
     A_ = &problem.A;
     c_ = &problem.c;
     b_ = &problem.b;
@@ -210,7 +210,7 @@ void PdhgSolver<T>::initialize(LPProblem<T>& problem) {
     ub_ = &problem.ub;
     l_ = &problem.l;
     u_ = &problem.u;
-    
+
     // Apply Ruiz scaling if enabled.
     //
     // ruiz_equilibrate scales A, c and b. The constraint bounds l and u live on
@@ -231,7 +231,7 @@ void PdhgSolver<T>::initialize(LPProblem<T>& problem) {
         l_ = &l_scaled_;
         u_ = &u_scaled_;
     }
-    
+
     // Compute step sizes
     if (settings_.tau == T(0) || settings_.sigma == T(0)) {
         T norm_A = estimate_operator_norm(*A_, 20);
@@ -242,7 +242,7 @@ void PdhgSolver<T>::initialize(LPProblem<T>& problem) {
         tau_ = settings_.tau;
         sigma_ = settings_.sigma;
     }
-    
+
     // Initialize iterates
     x_.resize(n_);
     x_.fill(T(0));
@@ -251,12 +251,12 @@ void PdhgSolver<T>::initialize(LPProblem<T>& problem) {
     y_.resize(m_);
     y_.fill(T(0));
     y_prev_.resize(m_);
-    
+
     // Workspace
     Ax_.resize(m_);
     Aty_.resize(n_);
     temp_.resize(std::max(m_, n_));
-    
+
     iter_ = 0;
 }
 
@@ -264,38 +264,38 @@ template <typename T>
 void PdhgSolver<T>::iterate() {
     int num_blocks_n = (n_ + kBlockSize - 1) / kBlockSize;
     int num_blocks_m = (m_ + kBlockSize - 1) / kBlockSize;
-    
+
     // Save previous iterates
     kernels::copy_kernel<<<num_blocks_n, kBlockSize>>>(
         x_prev_.data(), x_.data(), n_);
     kernels::copy_kernel<<<num_blocks_m, kBlockSize>>>(
         y_prev_.data(), y_.data(), m_);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     // Compute A^T * y
     Aty_.fill(T(0));
     A_->spmv_transpose(T(1), y_, T(0), Aty_);
-    
+
     // Primal update: x = proj_X(x - tau * (c + A^T y))
     kernels::primal_update_kernel<<<num_blocks_n, kBlockSize>>>(
         x_.data(), x_prev_.data(), c_->data(), Aty_.data(),
         lb_->data(), ub_->data(), tau_, n_);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     // Extrapolation: x_bar = 2*x - x_prev
     kernels::extrapolation_kernel<<<num_blocks_n, kBlockSize>>>(
         x_bar_.data(), x_.data(), x_prev_.data(), n_);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     // Compute A * x_bar
     Ax_.fill(T(0));
     A_->spmv(T(1), x_bar_, T(0), Ax_);
-    
+
     // Dual update: y = prox_{sigma g*}(y + sigma A x_bar), g = indicator[l, u]
     kernels::dual_update_kernel<<<num_blocks_m, kBlockSize>>>(
         y_.data(), y_prev_.data(), Ax_.data(), l_->data(), u_->data(), sigma_, m_);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     ++iter_;
 }
 
@@ -303,38 +303,38 @@ template <typename T>
 void PdhgSolver<T>::compute_residuals() {
     int num_blocks_n = (n_ + kBlockSize - 1) / kBlockSize;
     int num_blocks_m = (m_ + kBlockSize - 1) / kBlockSize;
-    
+
     // Compute A * x (for primal residual)
     A_->spmv(T(1), x_, T(0), Ax_);
-    
+
     // Compute A^T * y (for dual residual)
     A_->spmv_transpose(T(1), y_, T(0), Aty_);
-    
+
     // Primal residual: ||Ax - b||
     DevicePtr<T> partial_p(num_blocks_m);
     kernels::compute_primal_residual_kernel<<<num_blocks_m, kBlockSize>>>(
         Ax_.data(), l_->data(), u_->data(), partial_p.get(), m_);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     std::vector<T> h_partial_p(num_blocks_m);
     copy_device_to_host(h_partial_p.data(), partial_p.get(), num_blocks_m);
-    
+
     T sum_p = T(0);
     for (int i = 0; i < num_blocks_m; ++i) {
         sum_p += h_partial_p[i];
     }
     primal_res_ = std::sqrt(sum_p);
-    
+
     // Dual residual: ||c + A^T y||_reduced
     DevicePtr<T> partial_d(num_blocks_n);
     kernels::compute_dual_residual_kernel<<<num_blocks_n, kBlockSize>>>(
         c_->data(), Aty_.data(), x_.data(), lb_->data(), ub_->data(),
         partial_d.get(), n_);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     std::vector<T> h_partial_d(num_blocks_n);
     copy_device_to_host(h_partial_d.data(), partial_d.get(), num_blocks_n);
-    
+
     T sum_d = T(0);
     for (int i = 0; i < num_blocks_n; ++i) {
         sum_d += h_partial_d[i];
@@ -345,7 +345,7 @@ void PdhgSolver<T>::compute_residuals() {
 template <typename T>
 bool PdhgSolver<T>::check_convergence() {
     compute_residuals();
-    
+
     // Relative tolerances
     T c_norm = c_->norm2();
     // Scale the primal tolerance by ||Ax||: with general l <= Ax <= u there is
@@ -355,15 +355,15 @@ bool PdhgSolver<T>::check_convergence() {
 
     T primal_tol = settings_.eps_abs + settings_.eps_rel * std::max(ax_norm, T(1));
     T dual_tol = settings_.eps_abs + settings_.eps_rel * std::max(c_norm, T(1));
-    
+
     if (settings_.verbose && (iter_ % 100 == 0 || iter_ == 1)) {
-        std::cout << "Iter " << iter_ 
-                  << " | p_res: " << primal_res_ 
+        std::cout << "Iter " << iter_
+                  << " | p_res: " << primal_res_
                   << " | d_res: " << dual_res_
                   << " | tol: " << primal_tol << ", " << dual_tol
                   << std::endl;
     }
-    
+
     return (primal_res_ < primal_tol) && (dual_res_ < dual_tol);
 }
 
@@ -373,18 +373,18 @@ void PdhgSolver<T>::adaptive_restart() {
     // More sophisticated: check if ||z_k - z_{k-1}||^2 < ||z_{k-1} - z_{k-2}||^2
     T x_change = T(0);
     T y_change = T(0);
-    
+
     // Compute ||x - x_prev||^2 + ||y - y_prev||^2
     DeviceVector<T> diff_x(n_);
     diff_x.copy_from(x_);
     diff_x.axpy(T(-1), x_prev_);
     x_change = diff_x.norm2();
-    
+
     DeviceVector<T> diff_y(m_);
     diff_y.copy_from(y_);
     diff_y.axpy(T(-1), y_prev_);
     y_change = diff_y.norm2();
-    
+
     // If change is very small, we may be oscillating - restart
     if (x_change + y_change < T(1e-10)) {
         // Restart by resetting to current iterate (no momentum)
@@ -396,43 +396,43 @@ void PdhgSolver<T>::adaptive_restart() {
 template <typename T>
 PdhgResult<T> PdhgSolver<T>::solve(LPProblem<T>& problem) {
     auto start_time = std::chrono::high_resolution_clock::now();
-    
+
     // Save original c and b for objective computation (before scaling)
     DeviceVector<T> c_orig, b_orig;
     c_orig.copy_from(problem.c);
     b_orig.copy_from(problem.b);
-    
+
     initialize(problem);
-    
+
     PdhgResult<T> result;
     result.status = Status::MaxIterations;
-    
+
     for (iter_ = 1; iter_ <= settings_.max_iters; ++iter_) {
         iterate();
-        
+
         if (iter_ % settings_.check_interval == 0) {
             if (check_convergence()) {
                 result.status = Status::Optimal;
                 break;
             }
-            
+
             if (settings_.adaptive_restart) {
                 adaptive_restart();
             }
         }
     }
-    
+
     // Compute final residuals
     compute_residuals();
-    
+
     // Unscale solution if scaling was applied
     if (settings_.scaling) {
         unscale_solution(x_, y_, scaling_);
     }
-    
+
     auto end_time = std::chrono::high_resolution_clock::now();
     double elapsed = std::chrono::duration<double>(end_time - start_time).count();
-    
+
     // Objectives with the ORIGINAL (unscaled) data.
     //
     // The dual value of a row is the support function of [l, u], not b^T y:
@@ -451,7 +451,7 @@ PdhgResult<T> PdhgSolver<T>::solve(LPProblem<T>& problem) {
         if (std::isinf(bnd)) { dual_obj = -std::numeric_limits<T>::infinity(); break; }
         dual_obj -= bnd * yi;
     }
-    
+
     // Populate result
     result.x = std::move(x_);
     result.y = std::move(y_);
@@ -461,7 +461,7 @@ PdhgResult<T> PdhgSolver<T>::solve(LPProblem<T>& problem) {
     result.dual_res = dual_res_;
     result.iterations = iter_;
     result.solve_time = elapsed;
-    
+
     return result;
 }
 

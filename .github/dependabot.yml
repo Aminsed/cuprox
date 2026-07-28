@@ -20,7 +20,7 @@ updates:
           - "black"
           - "mypy"
           - "hypothesis"
-      
+
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -9,7 +9,7 @@ namespace cuprox {
 
 // Project x onto box constraints: result = clip(x, lb, ub)
 template <typename T>
-void project_box(DeviceVector<T>& x, 
+void project_box(DeviceVector<T>& x,
                  const DeviceVector<T>& lb,
                  const DeviceVector<T>& ub);
 

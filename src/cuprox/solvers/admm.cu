@@ -45,7 +45,7 @@ __global__ void y_update_kernel(T* y, const T* Ax, const T* z, T rho, Index m) {
 
 // Compute RHS for CG: rhs = rho * A'z - A'y - q
 template <typename T>
-__global__ void compute_rhs_kernel(T* rhs, const T* Atz, const T* Aty, 
+__global__ void compute_rhs_kernel(T* rhs, const T* Atz, const T* Aty,
                                     const T* q, T rho, Index n) {
     Index i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
@@ -97,7 +97,7 @@ template <typename T>
 void AdmmSolver<T>::initialize(QPProblem<T>& problem) {
     n_ = problem.num_vars();
     m_ = problem.num_constraints();
-    
+
     P_ = &problem.P;
     A_ = &problem.A;
     q_ = &problem.q;
@@ -116,7 +116,7 @@ void AdmmSolver<T>::initialize(QPProblem<T>& problem) {
                                        problem.lb, problem.ub,
                                        settings_.scaling_iters);
     }
-    
+
     // Variable bounds (optional)
     if (problem.lb.size() == n_) {
         problem_lb_ = &problem.lb;
@@ -128,7 +128,7 @@ void AdmmSolver<T>::initialize(QPProblem<T>& problem) {
     } else {
         problem_ub_ = nullptr;
     }
-    
+
     // Initialize rho
     if (settings_.rho == T(0)) {
         // Auto-select rho based on problem data
@@ -138,19 +138,19 @@ void AdmmSolver<T>::initialize(QPProblem<T>& problem) {
     } else {
         rho_ = settings_.rho;
     }
-    
+
     // Initialize iterates
     x_.resize(n_);
     x_.fill(T(0));
-    
+
     z_.resize(m_);
     z_.fill(T(0));
-    
+
     z_prev_.resize(m_);
-    
+
     y_.resize(m_);
     y_.fill(T(0));
-    
+
     // Workspace
     Ax_.resize(m_);
     Px_.resize(n_);
@@ -160,97 +160,97 @@ void AdmmSolver<T>::initialize(QPProblem<T>& problem) {
     // temp_ only ever holds A^T * (something of length m), which is length n.
     // Sizing it max(m, n) made cuSPARSE reject every problem with m > n.
     temp_.resize(n_);
-    
+
     // CG workspace
     cg_r_.resize(n_);
     cg_p_.resize(n_);
     cg_Ap_.resize(n_);
-    
+
     iter_ = 0;
 }
 
 template <typename T>
 void AdmmSolver<T>::x_update() {
     int num_blocks = (n_ + kBlockSize - 1) / kBlockSize;
-    
+
     // Compute RHS: rhs = rho * A'z - A'y - q
     Atz_.fill(T(0));
     A_->spmv_transpose(T(1), z_, T(0), Atz_);
-    
+
     Aty_.fill(T(0));
     A_->spmv_transpose(T(1), y_, T(0), Aty_);
-    
+
     kernels::compute_rhs_kernel<<<num_blocks, kBlockSize>>>(
         rhs_.data(), Atz_.data(), Aty_.data(), q_->data(), rho_, n_);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     // Solve (P + rho * A'A) x = rhs using Conjugate Gradient
     // Initial guess: x (warm start from previous iteration)
-    
+
     // Compute initial residual: r = rhs - (P + rho*A'A) * x
     // First compute (P + rho*A'A) * x
     Px_.fill(T(0));
     P_->spmv(T(1), x_, T(0), Px_);  // Px = P * x
-    
+
     Ax_.fill(T(0));
     A_->spmv(T(1), x_, T(0), Ax_);   // Ax = A * x
-    
+
     temp_.fill(T(0));
     A_->spmv_transpose(T(1), Ax_, T(0), temp_);  // temp = A' * Ax
-    
+
     // cg_Ap = P*x + rho * A'*A*x
     cg_Ap_.copy_from(Px_);
     cg_Ap_.axpy(rho_, temp_);
-    
+
     // r = rhs - (P + rho*A'A) * x
     cg_r_.copy_from(rhs_);
     cg_r_.axpy(T(-1), cg_Ap_);
-    
+
     // p = r
     cg_p_.copy_from(cg_r_);
-    
+
     T r_norm_sq = cg_r_.dot(cg_r_);
     T rhs_norm = rhs_.norm2();
     T tol = settings_.cg_tol * std::max(rhs_norm, T(1));
-    
+
     for (int cg_iter = 0; cg_iter < settings_.cg_max_iters; ++cg_iter) {
         if (std::sqrt(r_norm_sq) < tol) {
             break;
         }
-        
+
         // Compute Ap = (P + rho * A'A) * p
         Px_.fill(T(0));
         P_->spmv(T(1), cg_p_, T(0), Px_);
-        
+
         Ax_.fill(T(0));
         A_->spmv(T(1), cg_p_, T(0), Ax_);
-        
+
         temp_.fill(T(0));
         A_->spmv_transpose(T(1), Ax_, T(0), temp_);
-        
+
         cg_Ap_.copy_from(Px_);
         cg_Ap_.axpy(rho_, temp_);
-        
+
         T pAp = cg_p_.dot(cg_Ap_);
         if (std::abs(pAp) < T(1e-14)) {
             break;  // Converged or breakdown
         }
-        
+
         T alpha = r_norm_sq / pAp;
-        
+
         // x = x + alpha * p
         kernels::cg_update_x_kernel<<<num_blocks, kBlockSize>>>(
             x_.data(), cg_p_.data(), alpha, n_);
-        
+
         // r = r - alpha * Ap
         kernels::cg_update_r_kernel<<<num_blocks, kBlockSize>>>(
             cg_r_.data(), cg_Ap_.data(), alpha, n_);
         CUPROX_CUDA_CHECK_LAST();
-        
+
         T r_norm_sq_new = cg_r_.dot(cg_r_);
         T beta = r_norm_sq_new / r_norm_sq;
         r_norm_sq = r_norm_sq_new;
-        
+
         // p = r + beta * p
         kernels::cg_update_p_kernel<<<num_blocks, kBlockSize>>>(
             cg_p_.data(), cg_r_.data(), beta, n_);
@@ -261,14 +261,14 @@ void AdmmSolver<T>::x_update() {
 template <typename T>
 void AdmmSolver<T>::z_update() {
     int num_blocks = (m_ + kBlockSize - 1) / kBlockSize;
-    
+
     // Save previous z for dual residual computation
     z_prev_.copy_from(z_);
-    
+
     // Compute Ax
     Ax_.fill(T(0));
     A_->spmv(T(1), x_, T(0), Ax_);
-    
+
     // z = proj_{[l,u]}(Ax + y/rho)
     T rho_inv = T(1) / rho_;
     kernels::z_update_kernel<<<num_blocks, kBlockSize>>>(
@@ -279,7 +279,7 @@ void AdmmSolver<T>::z_update() {
 template <typename T>
 void AdmmSolver<T>::y_update() {
     int num_blocks = (m_ + kBlockSize - 1) / kBlockSize;
-    
+
     // y = y + rho * (Ax - z)
     kernels::y_update_kernel<<<num_blocks, kBlockSize>>>(
         y_.data(), Ax_.data(), z_.data(), rho_, m_);
@@ -303,62 +303,62 @@ T AdmmSolver<T>::dual_norm(const DeviceVector<T>& v) {
 template <typename T>
 void AdmmSolver<T>::compute_residuals() {
     int num_blocks_m = (m_ + kBlockSize - 1) / kBlockSize;
-    
+
     // Primal residual: ||Ax - z||
     DeviceVector<T> pres(m_);
     kernels::primal_res_kernel<<<num_blocks_m, kBlockSize>>>(
         pres.data(), Ax_.data(), z_.data(), m_);
     CUPROX_CUDA_CHECK_LAST();
-    
+
     primal_res_ = primal_norm(pres);
-    
+
     // Dual residual: ||rho * A'(z - z_prev)||
     DeviceVector<T> dz(m_);
     dz.copy_from(z_);
     dz.axpy(T(-1), z_prev_);
-    
+
     DeviceVector<T> Atdz(n_);
     Atdz.fill(T(0));
     A_->spmv_transpose(rho_, dz, T(0), Atdz);
-    
+
     dual_res_ = dual_norm(Atdz);
 }
 
 template <typename T>
 bool AdmmSolver<T>::check_convergence() {
     compute_residuals();
-    
+
     // Compute tolerances (OSQP-style)
     T Ax_norm = primal_norm(Ax_);
     T z_norm = primal_norm(z_);
     T Aty_norm = dual_norm(Aty_);
     T Px_norm = dual_norm(Px_);
     T q_norm = dual_norm(*q_);
-    
-    T eps_primal = settings_.eps_abs * std::sqrt(T(m_)) + 
+
+    T eps_primal = settings_.eps_abs * std::sqrt(T(m_)) +
                    settings_.eps_rel * std::max(Ax_norm, z_norm);
-    T eps_dual = settings_.eps_abs * std::sqrt(T(n_)) + 
+    T eps_dual = settings_.eps_abs * std::sqrt(T(n_)) +
                  settings_.eps_rel * std::max(Aty_norm, std::max(Px_norm, q_norm));
-    
+
     if (settings_.verbose && (iter_ % 100 == 0 || iter_ == 1)) {
-        std::cout << "Iter " << iter_ 
-                  << " | p_res: " << primal_res_ 
+        std::cout << "Iter " << iter_
+                  << " | p_res: " << primal_res_
                   << " | d_res: " << dual_res_
                   << " | rho: " << rho_
                   << std::endl;
     }
-    
+
     return (primal_res_ < eps_primal) && (dual_res_ < eps_dual);
 }
 
 template <typename T>
 void AdmmSolver<T>::update_rho() {
     if (!settings_.adaptive_rho) return;
-    
+
     // Simple adaptive rho (OSQP-style)
     const T ratio = primal_res_ / (dual_res_ + T(1e-10));
     const T factor = T(5);
-    
+
     if (ratio > T(10)) {
         rho_ = std::min(rho_ * factor, settings_.rho_max);
     } else if (ratio < T(0.1)) {
@@ -371,56 +371,56 @@ void AdmmSolver<T>::solve_unconstrained() {
     // Solve unconstrained QP: minimize (1/2)x'Px + q'x
     // Optimality condition: Px + q = 0, so Px = -q
     // Use CG to solve: Px = -q
-    
+
     int num_blocks = (n_ + kBlockSize - 1) / kBlockSize;
-    
+
     // Initialize: x = 0
     x_.fill(T(0));
-    
+
     // r = -q - Px (= -q since x=0)
     cg_r_.copy_from(*q_);
     cg_r_.scale(T(-1));
-    
+
     // p = r
     cg_p_.copy_from(cg_r_);
-    
+
     T r_norm_sq = cg_r_.dot(cg_r_);
     T r0_norm = std::sqrt(r_norm_sq);
-    
+
     // CG iterations to solve Px = -q
     for (int cg_iter = 0; cg_iter < settings_.cg_max_iters; ++cg_iter) {
         // Ap = P * p
         cg_Ap_.fill(T(0));
         P_->spmv(T(1), cg_p_, T(0), cg_Ap_);
-        
+
         T pAp = cg_p_.dot(cg_Ap_);
         if (std::abs(pAp) < T(1e-14)) break;
-        
+
         T alpha = r_norm_sq / pAp;
-        
+
         // x = x + alpha * p
         kernels::cg_update_x_kernel<<<num_blocks, kBlockSize>>>(
             x_.data(), cg_p_.data(), alpha, n_);
-        
+
         // r = r - alpha * Ap
         kernels::cg_update_r_kernel<<<num_blocks, kBlockSize>>>(
             cg_r_.data(), cg_Ap_.data(), alpha, n_);
         CUPROX_CUDA_CHECK_LAST();
-        
+
         T r_norm_sq_new = cg_r_.dot(cg_r_);
-        
+
         // Check convergence
         if (std::sqrt(r_norm_sq_new) < settings_.cg_tol * (r0_norm + T(1))) break;
-        
+
         T beta = r_norm_sq_new / r_norm_sq;
         r_norm_sq = r_norm_sq_new;
-        
+
         // p = r + beta * p
         kernels::cg_update_p_kernel<<<num_blocks, kBlockSize>>>(
             cg_p_.data(), cg_r_.data(), beta, n_);
         CUPROX_CUDA_CHECK_LAST();
     }
-    
+
     // Apply box constraints to x if they exist
     if (problem_lb_ && problem_ub_ && problem_lb_->size() == n_ && problem_ub_->size() == n_) {
         int num_blocks_n = (n_ + kBlockSize - 1) / kBlockSize;
@@ -439,10 +439,10 @@ AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
     q_orig.copy_from(problem.q);
 
     initialize(problem);
-    
+
     AdmmResult<T> result;
     result.status = Status::MaxIterations;
-    
+
     // Special case: unconstrained QP (m = 0)
     // Solve Px = -q directly using CG
     if (m_ == 0) {
@@ -454,18 +454,18 @@ AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
             x_update();
             z_update();
             y_update();
-            
+
             if (iter_ % settings_.check_interval == 0) {
                 if (check_convergence()) {
                     result.status = Status::Optimal;
                     break;
                 }
-                
+
                 update_rho();
             }
         }
     }
-    
+
     // Compute final residuals (skip if unconstrained)
     if (m_ > 0) {
         compute_residuals();
@@ -473,10 +473,10 @@ AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
         primal_res_ = T(0);
         dual_res_ = T(0);
     }
-    
+
     auto end_time = std::chrono::high_resolution_clock::now();
     double elapsed = std::chrono::duration<double>(end_time - start_time).count();
-    
+
     // Compute objective: (1/2)x'Px + q'x
     // Undo the equilibration before anything is read back. This restores both
     // the solution and the problem data, so the objective below is computed in
@@ -496,7 +496,7 @@ AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
     T quad_term = T(0.5) * x_.dot(Px_);
     T lin_term = q_orig.dot(x_);
     T primal_obj = quad_term + lin_term;
-    
+
     // Populate result
     result.x = std::move(x_);
     result.y = std::move(y_);
@@ -506,7 +506,7 @@ AdmmResult<T> AdmmSolver<T>::solve(QPProblem<T>& problem) {
     result.dual_res = dual_res_;
     result.iterations = iter_;
     result.solve_time = elapsed;
-    
+
     return result;
 }
 

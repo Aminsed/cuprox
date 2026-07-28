@@ -16,10 +16,10 @@ struct ScalingFactors {
     DeviceVector<T> E;      // Column scaling (n x 1)
     T c_scale;              // Objective scaling
     T b_scale;              // RHS scaling
-    
+
     ScalingFactors() : c_scale(T(1)), b_scale(T(1)) {}
-    
-    ScalingFactors(Index m, Index n) 
+
+    ScalingFactors(Index m, Index n)
         : D(m, T(1)), E(n, T(1)), c_scale(T(1)), b_scale(T(1)) {}
 };
 
@@ -49,10 +49,10 @@ void scale_cols(CsrMatrix<T>& A, const DeviceVector<T>& E);
 
 /**
  * @brief Ruiz equilibration
- * 
+ *
  * Scales matrix A so that row and column infinity norms are ~1.
  * Returns scaling factors D, E such that: D * A * E has balanced norms.
- * 
+ *
  * @param A Constraint matrix (modified in-place)
  * @param c Objective vector (modified in-place)
  * @param b RHS vector (modified in-place)
@@ -144,7 +144,7 @@ T unscaled_norm2(const DeviceVector<T>& v, const DeviceVector<T>& s, T alpha,
 
 /**
  * @brief Unscale solution after solving
- * 
+ *
  * Given scaled solution (x_scaled, y_scaled), recover original:
  * x = E * x_scaled
  * y = D * y_scaled * c_scale
@@ -158,7 +158,7 @@ void unscale_solution(
 
 /**
  * @brief Estimate spectral norm ||A||_2 using power iteration
- * 
+ *
  * Used to compute safe step sizes for PDHG: tau * sigma < 1/||A||_2^2
  */
 template <typename T>

@@ -223,7 +223,7 @@ n, m = 100, 50
 A = sparse.random(m, n, density=0.1, format='csr')
     b = np.random.rand(m)
     c = np.random.randn(n)
-    
+
     result = cuprox.solve(c=c, A=A, b=b, lb=np.zeros(n))
 
     print(f"Status: {result.status}")
