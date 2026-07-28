@@ -30,7 +30,8 @@ For large-scale problems, use the matrix interface:
 """
 
 from ._version import __version__
-__author__ = "cuProx Contributors"
+
+__author__ = "Amin Sedaghat"
 
 # Check for CUDA availability
 try:
