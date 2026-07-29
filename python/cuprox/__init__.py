@@ -105,14 +105,13 @@ def info() -> str:
     ]
 
     if __cuda_available__:
-        try:
-            from ._core import get_device_info
+        # The extension exposes get_device_name/get_device_memory. This
+        # asked for a get_device_info that has never existed, and the bare
+        # except swallowed the ImportError, so the GPU lines were silently
+        # missing from every report.
+        from ._core import get_device_memory, get_device_name
 
-            device_info = get_device_info()
-            lines.append(f"GPU: {device_info['name']}")
-            lines.append(f"CUDA version: {device_info['cuda_version']}")
-            lines.append(f"Memory: {device_info['memory_gb']:.1f} GB")
-        except Exception:
-            pass
+        lines.append(f"GPU: {get_device_name()}")
+        lines.append(f"Memory: {get_device_memory() / 1024:.1f} GB")
 
     return "\n".join(lines)

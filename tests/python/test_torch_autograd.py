@@ -150,8 +150,16 @@ class TestQPGradients:
         assert P.grad is not None
         assert P.grad.abs().sum() > 0
 
-    def test_gradient_wrt_b(self, device, dtype):
-        """Gradient w.r.t. equality RHS b."""
+    def test_no_gradient_wrt_b(self, device, dtype):
+        """b carries no gradient, and that is deliberate.
+
+        This test used to assert only that the gradient was nonzero. It was --
+        and it was also wrong: checked against central finite differences it
+        came back with the correct magnitude and the opposite sign, which
+        trains a model backwards. Differentiating through a changing active set
+        needs the full KKT adjoint, which is not implemented, so backward
+        returns None rather than a plausible wrong number.
+        """
         from cuprox.torch import solve_qp
 
         P = torch.eye(2, device=device, dtype=dtype)
@@ -160,12 +168,9 @@ class TestQPGradients:
         b = torch.tensor([2.0], device=device, dtype=dtype, requires_grad=True)
 
         x = solve_qp(P, q, A=A, b=b)
-        loss = x.sum()
-        loss.backward()
+        x.sum().backward()
 
-        assert b.grad is not None
-        # Changing b should change x proportionally
-        assert b.grad.abs().sum() > 0
+        assert b.grad is None
 
     def test_gradient_finite_difference_q(self, device, dtype):
         """Verify q gradient matches finite differences."""

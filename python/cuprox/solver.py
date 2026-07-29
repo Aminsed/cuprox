@@ -74,6 +74,19 @@ def solve(
     if constraint_senses is not None:
         if b is None:
             raise InvalidInputError("b required with constraint_senses")
+        # Rows start unconstrained and only listed senses narrow them, so a
+        # short list or a typo used to leave rows free: a different problem,
+        # solved correctly, reported as success.
+        if len(constraint_senses) != m:
+            raise DimensionError(
+                f"constraint_senses has {len(constraint_senses)} entries but A " f"has {m} rows"
+            )
+        _allowed = {"=", "==", "<=", "<", ">=", ">"}
+        _bad = sorted({s for s in constraint_senses if s not in _allowed})
+        if _bad:
+            raise InvalidInputError(
+                f"unknown constraint sense(s) {_bad}; allowed: {sorted(_allowed)}"
+            )
         b = np.asarray(b, dtype=np.float64).ravel()
         if len(b) != m:
             raise DimensionError(f"b has {len(b)} entries but A has {m} rows")
@@ -87,6 +100,11 @@ def solve(
             elif sense in (">=", ">"):
                 constr_l[i] = b[i]
     elif constraint_l is not None or constraint_u is not None:
+        # The binding copies m values out of these buffers regardless of how
+        # long they are.
+        for _nm, _v in (("constraint_l", constraint_l), ("constraint_u", constraint_u)):
+            if _v is not None and np.asarray(_v).size != m:
+                raise DimensionError(f"{_nm} has {np.asarray(_v).size} entries but A has {m} rows")
         constr_l = (
             np.asarray(constraint_l, dtype=np.float64)
             if constraint_l is not None
@@ -246,6 +264,12 @@ def _solve_gpu(c, A, P, lb, ub, constr_l, constr_u, max_iters, tol, verbose, is_
         y=y_out,
         iterations=out["iterations"],
         solve_time=out["solve_time"],
+        # The core reports both; not forwarding them left the dataclass
+        # defaults of 0.0 in place, so summary() printed a convincing
+        # "0.000000e+00" for a run that hit max_iterations without
+        # converging. Unknown is NaN, never a plausible zero.
+        primal_residual=float(out.get("primal_residual", float("nan"))),
+        dual_residual=float(out.get("dual_residual", float("nan"))),
     )
 
 
