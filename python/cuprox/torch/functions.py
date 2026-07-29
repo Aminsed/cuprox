@@ -498,14 +498,10 @@ class QPFunction(Function):
         n_active_ineq = active_ineq.sum().item() if n_ineq > 0 else 0
 
         if n_free == 0:
-            # All variables at bounds - zero gradients for P, q
-            grad_P_out = torch.zeros_like(P)
-            grad_q_out = torch.zeros_like(q)
-            grad_A_out = torch.zeros(n_eq, n, device=device, dtype=dtype) if n_eq > 0 else None
-            grad_b_out = torch.zeros(n_eq, device=device, dtype=dtype) if n_eq > 0 else None
-            grad_G_out = torch.zeros(n_ineq, n, device=device, dtype=dtype) if n_ineq > 0 else None
-            grad_h_out = torch.zeros(n_ineq, device=device, dtype=dtype) if n_ineq > 0 else None
-            return grad_P_out, grad_q_out, grad_A_out, grad_b_out, grad_G_out, grad_h_out
+            # Every variable sits at a bound, so the objective parameters get
+            # zero gradient. A, b, G and h get None for the reason given at the
+            # final return.
+            return torch.zeros_like(P), torch.zeros_like(q), None, None, None, None
 
         # Build reduced KKT matrix
         free_idx = free.nonzero(as_tuple=True)[0]
@@ -594,7 +590,14 @@ class QPFunction(Function):
             grad_h_out = None
             grad_G_out = None
 
-        return grad_P_out, grad_q_out, grad_A_out, grad_b_out, grad_G_out, grad_h_out
+        # A, b, G and h carry no gradient. The adjoint expressions below
+        # were checked against central finite differences and disagreed --
+        # grad_b came back with the correct magnitude and the opposite
+        # sign, which trains a model backwards. Differentiating through a
+        # changing active set needs the full KKT adjoint, which is not
+        # implemented, so None is returned rather than a plausible wrong
+        # number. See tests/python/test_regressions.py.
+        return grad_P_out, grad_q_out, None, None, None, None
 
 
 class BatchQPFunction(Function):

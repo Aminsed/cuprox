@@ -386,16 +386,98 @@ def test_pdhg_iteration_count_is_not_doubled():
     assert result.iterations == cap
 
 
-def test_torch_layer_does_not_claim_gradients_it_does_not_return():
-    """backward returns None for every constraint parameter.
+def test_torch_backward_returns_no_constraint_gradients():
+    """backward must actually return None for A, b, G and h.
 
-    The module and class docstrings advertised gradients for A, b, G, h, lb and
-    ub. Only P and q are differentiated.
+    The previous version of this test grepped the source for two marketing
+    phrases, so it passed while backward still computed and returned constraint
+    gradients. Those values were checked against central finite differences and
+    disagreed -- grad_b had the correct magnitude and the opposite sign, which
+    trains a model backwards. This asserts the behaviour instead of the prose.
     """
-    import inspect
+    torch = pytest.importorskip("torch")
 
-    from cuprox.torch import functions as fn
+    from cuprox.torch import QPFunction
 
-    source = inspect.getsource(fn)
-    assert "Gradients for all problem parameters" not in source
-    assert "Supports gradients for ALL problem parameters" not in source
+    torch.manual_seed(0)
+    n, n_eq, n_ineq = 4, 2, 3
+    dt = torch.float64
+
+    M = torch.randn(n, n, dtype=dt)
+    args = [
+        (M @ M.T + 3 * torch.eye(n, dtype=dt)),  # P
+        torch.randn(n, dtype=dt),  # q
+        torch.randn(n_eq, n, dtype=dt),  # A
+        torch.randn(n_eq, dtype=dt) * 0.1,  # b
+        torch.randn(n_ineq, n, dtype=dt),  # G
+        torch.abs(torch.randn(n_ineq, dtype=dt)) + 1.0,  # h
+    ]
+    args = [a.clone().requires_grad_(True) for a in args]
+    lb = torch.full((n,), -1e6, dtype=dt)
+    ub = torch.full((n,), 1e6, dtype=dt)
+
+    x = QPFunction.apply(*args, lb, ub, 20000, 1e-11, False)
+    (torch.randn(n, dtype=dt) * x).sum().backward()
+
+    names = ["P", "q", "A", "b", "G", "h"]
+    for name, tensor in zip(names[:2], args[:2]):
+        assert tensor.grad is not None, f"{name} should carry a gradient"
+    for name, tensor in zip(names[2:], args[2:]):
+        assert tensor.grad is None, (
+            f"{name} returned a gradient; it is documented as None because the "
+            f"adjoint for constraint parameters is not implemented correctly"
+        )
+
+
+def test_residuals_are_not_reported_as_zero():
+    """Unset residuals must not print as a convincing 0.0.
+
+    _solve_gpu never forwarded primal_residual/dual_residual, so the dataclass
+    defaults of 0.0 stood and summary() showed "0.000000e+00" for runs that
+    never converged.
+    """
+    rng = np.random.default_rng(0)
+    result = solve(
+        c=rng.standard_normal(50),
+        A=rng.standard_normal((20, 50)),
+        b=np.ones(20),
+        lb=np.full(50, -1.0),
+        ub=np.full(50, 1.0),
+        params={"max_iterations": 5, "tolerance": 1e-14},
+    )
+    # Either a real measurement or NaN, never an unearned exact zero.
+    assert not (result.primal_residual == 0.0 and result.dual_residual == 0.0)
+
+
+def test_constraint_senses_are_validated():
+    """A short list or a typo used to leave rows silently unconstrained."""
+    c = np.zeros(2)
+    A = np.array([[1.0, 1.0], [1.0, -1.0]])
+    b = np.array([1.0, 0.0])
+
+    with pytest.raises(DimensionError):
+        solve(c=c, A=A, b=b, constraint_senses=["<="])  # too short
+
+    with pytest.raises(InvalidInputError):
+        solve(c=c, A=A, b=b, constraint_senses=["<=", "typo"])  # unknown sense
+
+
+def test_constraint_bound_lengths_are_validated():
+    """The binding copies one value per row regardless of the buffer length."""
+    c = np.zeros(2)
+    A = np.array([[1.0, 1.0], [1.0, -1.0]])
+
+    with pytest.raises(DimensionError):
+        solve(c=c, A=A, constraint_l=np.zeros(1), constraint_u=np.ones(2))
+
+
+def test_info_reports_the_gpu():
+    """info() imported a get_device_info that has never existed.
+
+    The bare except swallowed the ImportError, so the GPU lines were silently
+    missing from every report.
+    """
+    text = cuprox.info()
+    if cuprox.__cuda_available__:
+        assert "GPU:" in text
+        assert "Memory:" in text
